@@ -1,5 +1,9 @@
 # sondare
 
+[![PyPI](https://img.shields.io/pypi/v/sondare)](https://pypi.org/project/sondare/)
+[![Python](https://img.shields.io/pypi/pyversions/sondare)](https://pypi.org/project/sondare/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 > *From italian: <u>sonda</u> di <u>re</u>te - network probe*
 
 ## About
@@ -18,23 +22,24 @@
 - Root / administrator privileges (required for raw packet access)
 - npcap (Windows only)
 
-## Setup
+## Installation
 
-### Linux & macOS
+### pipx (recommended)
 
 ```bash
+sudo pipx install sondare --global
+```
+
+### From source
+
+```bash
+git clone https://github.com/w1ldy0uth/sondare.git
+cd sondare
 ./init.sh
 source sondare_venv/bin/activate
 ```
 
-### Windows
-
-```bat
-init.bat
-call sondare_venv\Scripts\activate
-```
-
-`init.sh` / `init.bat` creates a virtual environment and runs `pip install -e .`, which installs all dependencies and registers the `sondare` command.
+`init.sh` creates a virtual environment, installs all dependencies, and registers the `sondare` command inside it. On Windows use `init.bat` and `call sondare_venv\Scripts\activate` instead.
 
 ## Usage
 
