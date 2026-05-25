@@ -3,9 +3,11 @@
 
 import ipaddress
 import threading
+import time
 from queue import Queue
 from scapy.all import IP, ICMP, sr1
 from netscan.utils.system_utils import get_subnet
+from netscan.utils.adaptive import AdaptivePool
 
 
 class Ping:
@@ -14,8 +16,8 @@ class Ping:
     def __init__(self, verbose: bool, timeout: int, threads: int) -> None:
         self.verbose = verbose
         self.threads = threads
-        self.timeout = timeout
 
+        self._pool = AdaptivePool(max_threads=threads, timeout=float(timeout))
         self._lock = threading.Lock()
         self.q: Queue[str] = Queue()
 
@@ -26,8 +28,21 @@ class Ping:
 
     def check_host(self, host: str) -> None:
         """Pings host and appends its IP to results if an echo reply is received."""
-        icmp = IP(dst=host) / ICMP()
-        ans = sr1(icmp, timeout=self.timeout, verbose=self.verbose, promisc=False)
+        self._pool.acquire()
+        try:
+            start = time.monotonic()
+            ans = sr1(
+                IP(dst=host) / ICMP(),
+                timeout=self._pool.timeout,
+                verbose=self.verbose,
+                promisc=False,
+            )
+        finally:
+            self._pool.release()
+
+        elapsed = time.monotonic() - start
+        self._pool.record(is_timeout=(ans is None), rtt=elapsed if ans is not None else None)
+
         with self._lock:
             if ans and ans.haslayer(ICMP) and ans.getlayer(ICMP).type == 0:
                 self.results.append(host)

@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: UTF-8 -*-
 
-import threading
 import random
+import threading
+import time
 from queue import Queue
 from scapy.all import IP, TCP, sr1, sr
 from netscan.models import Port
 from netscan.utils.system_utils import warm_arp_cache
+from netscan.utils.adaptive import AdaptivePool
 
 
 class Tcp:
@@ -14,13 +16,13 @@ class Tcp:
 
     def __init__(self, verbose: bool, ip: str, port_begin: int, port_end: int, timeout: int, threads: int, retries: int) -> None:
         self.verbose = verbose
-        self.timeout = timeout
         self.ip = ip
         self.threads = threads
         self.port_begin = port_begin
         self.port_end = port_end
         self.retries = retries
 
+        self._pool = AdaptivePool(max_threads=threads, timeout=float(timeout), adapt_concurrency=True)
         self._lock = threading.Lock()
         self.q: Queue[int] = Queue()
 
@@ -32,15 +34,23 @@ class Tcp:
         """Probes a port up to retries+1 times; records it if any attempt gets a SYN-ACK."""
         for _ in range(self.retries + 1):
             source_port = random.randint(1025, 65534)
-            rsp = sr1(
-                IP(dst=self.ip) / TCP(sport=source_port, dport=target_port, flags="S"),
-                timeout=self.timeout,
-                verbose=self.verbose,
-                promisc=False
-            )
+            self._pool.acquire()
+            try:
+                start = time.monotonic()
+                rsp = sr1(
+                    IP(dst=self.ip) / TCP(sport=source_port, dport=target_port, flags="S"),
+                    timeout=self._pool.timeout,
+                    verbose=self.verbose,
+                    promisc=False,
+                )
+            finally:
+                self._pool.release()
+
+            elapsed = time.monotonic() - start
+            self._pool.record(is_timeout=(rsp is None), rtt=elapsed if rsp is not None else None)
 
             if rsp is None:
-                continue  # no response — retry
+                continue
 
             if rsp.haslayer(TCP):
                 if rsp.getlayer(TCP).flags == 0x12:  # SYN-ACK: open

@@ -111,7 +111,7 @@ os:
 ## Roadmap
 
 - [x] UDP scan
-- [ ] TCP adaptive scan algorithm
+- [x] Adaptive scan algorithm (AIMD concurrency + RTT-based timeout for TCP, ICMP, UDP and OS fingerprinting)
 - [x] OS fingerprinting
 - [ ] Wireless scan
 - [ ] Real-time packet capture / host monitoring

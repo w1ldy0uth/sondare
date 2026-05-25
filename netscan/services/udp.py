@@ -2,10 +2,12 @@
 # -*- coding: UTF-8 -*-
 
 import threading
+import time
 from queue import Queue
 from scapy.all import IP, UDP, ICMP, sr1
 from netscan.models import Port
 from netscan.utils.system_utils import warm_arp_cache
+from netscan.utils.adaptive import AdaptivePool
 
 
 class Udp:
@@ -13,13 +15,13 @@ class Udp:
 
     def __init__(self, verbose: bool, ip: str, port_begin: int, port_end: int, timeout: int, threads: int, retries: int) -> None:
         self.verbose = verbose
-        self.timeout = timeout
         self.ip = ip
         self.threads = threads
         self.port_begin = port_begin
         self.port_end = port_end
         self.retries = retries
 
+        self._pool = AdaptivePool(max_threads=threads, timeout=float(timeout))
         self._lock = threading.Lock()
         self.q: Queue[int] = Queue()
 
@@ -30,12 +32,20 @@ class Udp:
     def check_port(self, target_port: int) -> None:
         """Probes a UDP port; records it unless ICMP port-unreachable is received."""
         for attempt in range(self.retries + 1):
-            rsp = sr1(
-                IP(dst=self.ip) / UDP(dport=target_port),
-                timeout=self.timeout,
-                verbose=self.verbose,
-                promisc=False
-            )
+            self._pool.acquire()
+            try:
+                start = time.monotonic()
+                rsp = sr1(
+                    IP(dst=self.ip) / UDP(dport=target_port),
+                    timeout=self._pool.timeout,
+                    verbose=self.verbose,
+                    promisc=False,
+                )
+            finally:
+                self._pool.release()
+
+            elapsed = time.monotonic() - start
+            self._pool.record(is_timeout=(rsp is None), rtt=elapsed if rsp is not None else None)
 
             if rsp is None:
                 if attempt == self.retries:

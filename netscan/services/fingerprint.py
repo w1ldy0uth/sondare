@@ -3,9 +3,11 @@
 
 import random
 import threading
+import time
 from scapy.all import IP, TCP, sr1, sr
 from netscan.models import Fingerprint
 from netscan.utils.system_utils import warm_arp_cache
+from netscan.utils.adaptive import AdaptivePool
 
 # Ports tried in parallel when no specific port is given.
 _COMMON_PORTS = [80, 443, 22, 8080, 21, 25, 3389, 445, 23, 53]
@@ -44,7 +46,7 @@ class OsFingerprinter:
         self.verbose = verbose
         self.ip = ip
         self.port = port
-        self.timeout = timeout
+        self._pool = AdaptivePool(max_threads=len(_COMMON_PORTS), timeout=float(timeout))
         self._result: Fingerprint | None = None
         self._lock = threading.Lock()
         self._found = threading.Event()
@@ -54,12 +56,21 @@ class OsFingerprinter:
         if self._found.is_set():
             return
         sport = random.randint(1025, 65534)
-        rsp = sr1(
-            IP(dst=self.ip) / TCP(sport=sport, dport=port, flags="S"),
-            timeout=self.timeout,
-            verbose=self.verbose,
-            promisc=False,
-        )
+        self._pool.acquire()
+        try:
+            start = time.monotonic()
+            rsp = sr1(
+                IP(dst=self.ip) / TCP(sport=sport, dport=port, flags="S"),
+                timeout=self._pool.timeout,
+                verbose=self.verbose,
+                promisc=False,
+            )
+        finally:
+            self._pool.release()
+
+        elapsed = time.monotonic() - start
+        self._pool.record(is_timeout=(rsp is None), rtt=elapsed if rsp is not None else None)
+
         if rsp is None or not rsp.haslayer(TCP):
             return
         if rsp.getlayer(TCP).flags != 0x12:
