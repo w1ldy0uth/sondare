@@ -140,5 +140,5 @@ dmypy.json
 # Cython debug symbols
 cython_debug/
 
-# Virtual environment created by script
+# Virtual environments created by init scripts
 sondare_venv/

@@ -170,11 +170,3 @@ graph:
   -th, --threads    Concurrent fingerprint probes (default: 10)
   -v, --verbose     Verbose scapy output
 ```
-
-## Roadmap
-
-- [x] UDP scan
-- [x] Adaptive scan algorithm (AIMD concurrency + RTT-based timeout for TCP, ICMP, UDP and OS fingerprinting)
-- [x] OS fingerprinting
-- [x] Real-time packet capture / host monitoring (ARP watcher, host reachability table, port watcher, traffic sniffer)
-- [x] Interactive HTML network graph (vis-network, dark theme, OS fingerprinting overlay)
