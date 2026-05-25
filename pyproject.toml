@@ -12,6 +12,9 @@ dependencies = [
     "psutil>=5.9.5",
 ]
 
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
 [project.scripts]
 netscan = "netscan.main:main"
 
