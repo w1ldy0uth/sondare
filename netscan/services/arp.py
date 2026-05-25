@@ -3,7 +3,7 @@
 
 from scapy.all import ARP, srp, Ether
 from netscan.models import Host
-from netscan.utils.system_utils import get_cidr_address, get_network_interface
+from netscan.utils.system_utils import get_subnet, get_network_interface
 
 
 class Arp:
@@ -16,7 +16,7 @@ class Arp:
 
     def scan(self) -> None:
         """Sends ARP broadcast and records responses."""
-        cidr = get_cidr_address()
+        cidr = get_subnet()
         iface = get_network_interface()
         print(f"Scanning {cidr} ...", end=" ", flush=True)
         arp = ARP(pdst=cidr)

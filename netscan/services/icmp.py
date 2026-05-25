@@ -5,7 +5,7 @@ import ipaddress
 import threading
 from queue import Queue
 from scapy.all import IP, ICMP, sr1
-from netscan.utils.system_utils import get_cidr_address
+from netscan.utils.system_utils import get_subnet
 
 
 class Ping:
@@ -19,7 +19,7 @@ class Ping:
         self._lock = threading.Lock()
         self.q: Queue[str] = Queue()
 
-        self.hosts = [str(ip) for ip in ipaddress.IPv4Network(get_cidr_address()).hosts()]
+        self.hosts = [str(ip) for ip in ipaddress.IPv4Network(get_subnet()).hosts()]
         self.results: list[str] = []
         self._done = 0
         self._total = len(self.hosts)

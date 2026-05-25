@@ -1,3 +1,4 @@
+import ipaddress
 import os
 import psutil
 import socket
@@ -34,6 +35,11 @@ def get_ip_address() -> str:
     return socket.gethostbyname(socket.gethostname())
 
 
-def get_cidr_address() -> str:
-    """Returns the /24 CIDR block of the active interface (e.g. 192.168.1.0/24)."""
-    return get_ip_address().rsplit('.', 1)[0] + '.0/24'
+def get_subnet() -> str:
+    """Returns the CIDR block of the active interface (e.g. 192.168.1.0/24)."""
+    iface = get_network_interface()
+    for addr in psutil.net_if_addrs().get(iface, []):
+        if addr.family == socket.AF_INET and addr.netmask:
+            network = ipaddress.IPv4Network(f"{addr.address}/{addr.netmask}", strict=False)
+            return str(network)
+    raise RuntimeError("Could not determine network CIDR for active interface.")

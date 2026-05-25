@@ -4,10 +4,11 @@ from unittest.mock import patch, MagicMock
 from netscan.utils import system_utils
 
 
-def _make_addr(family, address):
+def _make_addr(family, address, netmask="255.255.255.0"):
     a = MagicMock()
     a.family = family
     a.address = address
+    a.netmask = netmask
     return a
 
 
@@ -91,10 +92,17 @@ class TestGetIpAddress:
             assert system_utils.get_ip_address() == "192.168.1.10"
 
 
-class TestGetCidrAddress:
+class TestGetSubnet:
     def test_produces_slash24(self):
-        addrs = {"eth0": [_make_addr(socket.AF_INET, "10.0.1.55")]}
+        addrs = {"eth0": [_make_addr(socket.AF_INET, "10.0.1.55", "255.255.255.0")]}
         stats = {"eth0": _make_stats(isup=True)}
         with patch("psutil.net_if_addrs", return_value=addrs), \
              patch("psutil.net_if_stats", return_value=stats):
-            assert system_utils.get_cidr_address() == "10.0.1.0/24"
+            assert system_utils.get_subnet() == "10.0.1.0/24"
+
+    def test_respects_non_slash24_netmask(self):
+        addrs = {"eth0": [_make_addr(socket.AF_INET, "10.0.1.55", "255.255.0.0")]}
+        stats = {"eth0": _make_stats(isup=True)}
+        with patch("psutil.net_if_addrs", return_value=addrs), \
+             patch("psutil.net_if_stats", return_value=stats):
+            assert system_utils.get_subnet() == "10.0.0.0/16"

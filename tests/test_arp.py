@@ -8,6 +8,7 @@ def _make_net_mocks():
     addr = MagicMock()
     addr.family = socket.AF_INET
     addr.address = "192.168.1.5"
+    addr.netmask = "255.255.255.0"
     stat = MagicMock()
     stat.isup = True
     return {"eth0": [addr]}, {"eth0": stat}
