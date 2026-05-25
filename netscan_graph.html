@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>netScan — Network Graph</title>
+<script src="https://unpkg.com/vis-network@9.1.9/dist/vis-network.min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #0d1117; color: #c9d1d9; font-family: 'Courier New', monospace; }
+#graph { width: 100vw; height: 100vh; }
+#info {
+  position: fixed; top: 20px; left: 20px;
+  background: rgba(22,27,34,0.92); border: 1px solid #30363d;
+  border-radius: 6px; padding: 12px 16px; font-size: 12px; line-height: 1.6;
+}
+#info h3 { font-size: 14px; color: #58a6ff; margin-bottom: 6px; }
+#info span { color: #8b949e; }
+#legend {
+  position: fixed; bottom: 20px; left: 20px;
+  background: rgba(22,27,34,0.92); border: 1px solid #30363d;
+  border-radius: 6px; padding: 12px 16px; font-size: 12px;
+}
+#legend h4 { margin-bottom: 8px; color: #8b949e; letter-spacing: 0.05em; }
+.leg { display: flex; align-items: center; gap: 8px; margin: 5px 0; }
+.dot { width: 11px; height: 11px; border-radius: 50%; flex-shrink: 0; }
+</style>
+</head>
+<body>
+<div id="graph"></div>
+<div id="info">
+  <h3>netScan</h3>
+  <div><span>Subnet:  </span>192.168.10.0/24</div>
+  <div><span>Hosts:   </span>4</div>
+  <div><span>Scanned: </span>2026-05-25 15:43:17</div>
+</div>
+<div id="legend">
+  <h4>LEGEND</h4>
+  <div class="leg"><div class="dot" style="background:#f0a500"></div>Gateway</div>
+  <div class="leg"><div class="dot" style="background:#4c9be8"></div>This machine</div>
+  <div class="leg"><div class="dot" style="background:#3fb950"></div>Host</div>
+</div>
+<script>
+const nodes = new vis.DataSet([{"id": "192.168.10.1", "label": "192.168.10.1\nd4:0d:ab:02:f6:ba\ngateway\nLinux", "title": "<b>192.168.10.1</b><br>MAC: d4:0d:ab:02:f6:ba<br>OS: Linux", "group": "gateway"}, {"id": "192.168.10.49", "label": "192.168.10.49\nfc:b2:14:6d:85:bb\nthis machine\nmacOS / iOS / FreeBSD", "title": "<b>192.168.10.49</b><br>MAC: fc:b2:14:6d:85:bb<br>OS: macOS / iOS / FreeBSD", "group": "local"}, {"id": "192.168.10.229", "label": "192.168.10.229\nb0:e5:f9:4d:5c:fc", "title": "<b>192.168.10.229</b><br>MAC: b0:e5:f9:4d:5c:fc", "group": "host"}, {"id": "192.168.10.75", "label": "192.168.10.75\n74:56:3c:9b:9e:64", "title": "<b>192.168.10.75</b><br>MAC: 74:56:3c:9b:9e:64", "group": "host"}]);
+const edges = new vis.DataSet([{"from": "192.168.10.1", "to": "192.168.10.49"}, {"from": "192.168.10.1", "to": "192.168.10.229"}, {"from": "192.168.10.1", "to": "192.168.10.75"}]);
+const options = {
+  nodes: {
+    font: { color: '#c9d1d9', face: 'Courier New', size: 12, multi: true },
+    borderWidth: 2,
+    shadow: { enabled: true, color: 'rgba(0,0,0,0.5)', size: 8 },
+  },
+  edges: {
+    color: { color: '#30363d', highlight: '#58a6ff', hover: '#58a6ff' },
+    width: 2,
+    smooth: { type: 'continuous' },
+    hoverWidth: 3,
+  },
+  groups: {
+    gateway: {
+      shape: 'star', size: 34,
+      color: { background: '#f0a500', border: '#b07800', highlight: { background: '#ffc107', border: '#b07800' } },
+    },
+    local: {
+      shape: 'diamond', size: 24,
+      color: { background: '#4c9be8', border: '#2055a0', highlight: { background: '#74b9f5', border: '#2055a0' } },
+    },
+    host: {
+      shape: 'dot', size: 20,
+      color: { background: '#3fb950', border: '#238636', highlight: { background: '#56d364', border: '#238636' } },
+    },
+  },
+  physics: {
+    solver: 'forceAtlas2Based',
+    forceAtlas2Based: { gravitationalConstant: -80, springLength: 160, springConstant: 0.05 },
+    stabilization: { iterations: 200 },
+  },
+  interaction: { hover: true, tooltipDelay: 80, navigationButtons: true, keyboard: true },
+};
+const network = new vis.Network(document.getElementById('graph'), { nodes, edges }, options);
+</script>
+</body>
+</html>

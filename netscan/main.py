@@ -16,6 +16,7 @@ from netscan.services.icmp import Ping
 from netscan.services.tcp import Tcp
 from netscan.services.udp import Udp
 from netscan.services.fingerprint import OsFingerprinter
+from netscan.services.graph import NetworkGraph
 from netscan.monitors.arp_watcher import ArpWatcher
 from netscan.monitors.hosts_watcher import HostsWatcher
 from netscan.monitors.port_watcher import PortWatcher
@@ -75,6 +76,7 @@ Examples:
     sudo netscan monitor hosts [--hosts IP [IP ...]] [-i INTERVAL] [-t TIMEOUT] [-th THREADS] [-v]
     sudo netscan monitor ports [--target IP[:START-END]] [-i INTERVAL] [-t TIMEOUT] [-th THREADS] [-v]
     sudo netscan monitor traffic [--filter BPF] [-v]
+    sudo netscan graph [-t TIMEOUT] [-th THREADS] [--fingerprint] [-o FILE] [--no-open] [-v]
         """
     )
 
@@ -139,6 +141,14 @@ Examples:
     traffic_parser = monitor_sub.add_parser("traffic", help="Live packet capture with per-packet protocol breakdown.")
     traffic_parser.add_argument("--filter", metavar="BPF", default=None, help="BPF filter expression (e.g. 'tcp', 'udp port 53', 'host 192.168.1.1')")
     traffic_parser.add_argument("-v", "--verbose", action="store_true", help="Verbose mode")
+
+    # Graph
+    graph_parser = subparsers.add_parser("graph", help="Generate an interactive HTML network graph.")
+    graph_parser.add_argument("-t", "--timeout", type=float, default=3.0, help="ARP scan timeout in seconds (default: 3)")
+    graph_parser.add_argument("-th", "--threads", type=int, default=10, help="Concurrent fingerprint probes (default: 10)")
+    graph_parser.add_argument("--fingerprint", action="store_true", help="OS-fingerprint each discovered host")
+    graph_parser.add_argument("-o", "--output", default="netscan_graph.html", help="Output file path (default: netscan_graph.html)")
+    graph_parser.add_argument("-v", "--verbose", action="store_true", help="Verbose mode")
 
     return parser
 
@@ -283,8 +293,18 @@ def main() -> None:
                 sniffer = TrafficSniffer(verbose=args.verbose, bpf_filter=args.filter)
                 sniffer.sniff()
 
+        elif args.scan_method == "graph":
+            grapher = NetworkGraph(
+                verbose=args.verbose,
+                timeout=args.timeout,
+                threads=args.threads,
+                fingerprint=args.fingerprint,
+                output=args.output,
+            )
+            grapher.run()
+
     except KeyboardInterrupt:
-        print("\nMonitor stopped.")
+        print("\nStopped.")
         sys.exit(0)
 
 

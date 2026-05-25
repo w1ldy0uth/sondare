@@ -53,6 +53,7 @@ sudo netscan <command> [options]
 | `monitor hosts` | Live host reachability table with auto-discovery |
 | `monitor ports` | Periodically SYN-scan a target and report port state changes |
 | `monitor traffic` | Live packet capture with per-packet protocol breakdown |
+| `graph` | Generate an interactive HTML network graph of the local subnet |
 
 ### Examples
 
@@ -95,6 +96,15 @@ sudo netscan monitor traffic
 
 # Live capture filtered to DNS
 sudo netscan monitor traffic --filter "udp port 53"
+
+# Generate a network graph (saved as netscan_graph.html)
+sudo netscan graph
+
+# Graph with OS fingerprinting for each discovered host
+sudo netscan graph --fingerprint
+
+# Save to a custom path
+sudo netscan graph -o /tmp/my_network.html
 ```
 
 ### Options
@@ -150,6 +160,13 @@ monitor ports:
 monitor traffic:
   --filter          BPF filter expression (e.g. 'tcp', 'udp port 53', 'host 192.168.1.1')
   -v, --verbose     Verbose scapy output
+
+graph:
+  --fingerprint     OS-fingerprint each discovered host (TCP SYN, falls back to ICMP TTL)
+  -o, --output      Output file path (default: netscan_graph.html)
+  -t, --timeout     ARP scan timeout in seconds (default: 3)
+  -th, --threads    Concurrent fingerprint probes (default: 10)
+  -v, --verbose     Verbose scapy output
 ```
 
 ## Roadmap
@@ -158,4 +175,4 @@ monitor traffic:
 - [x] Adaptive scan algorithm (AIMD concurrency + RTT-based timeout for TCP, ICMP, UDP and OS fingerprinting)
 - [x] OS fingerprinting
 - [x] Real-time packet capture / host monitoring (ARP watcher, host reachability table, port watcher, traffic sniffer)
-- [ ] Data visualisation
+- [x] Interactive HTML network graph (vis-network, dark theme, OS fingerprinting overlay)
