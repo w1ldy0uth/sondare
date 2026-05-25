@@ -1,0 +1,135 @@
+from unittest.mock import patch, MagicMock
+from netscan.services.fingerprint import OsFingerprinter, _initial_ttl, _guess_os
+from netscan.models import Fingerprint
+
+
+def _syn_ack(ttl: int, window: int):
+    tcp = MagicMock()
+    tcp.flags = 0x12
+    tcp.window = window
+    ip = MagicMock()
+    ip.ttl = ttl
+    pkt = MagicMock()
+    pkt.haslayer.return_value = True
+    pkt.getlayer.side_effect = lambda cls: tcp if cls.__name__ == "TCP" else ip
+    return pkt
+
+
+def _rst():
+    tcp = MagicMock()
+    tcp.flags = 0x04
+    pkt = MagicMock()
+    pkt.haslayer.return_value = True
+    pkt.getlayer.return_value = tcp
+    return pkt
+
+
+class TestInitialTtl:
+    def test_rounds_up_to_64(self):
+        assert _initial_ttl(54) == 64
+        assert _initial_ttl(64) == 64
+
+    def test_rounds_up_to_128(self):
+        assert _initial_ttl(100) == 128
+        assert _initial_ttl(128) == 128
+
+    def test_rounds_up_to_255(self):
+        assert _initial_ttl(200) == 255
+        assert _initial_ttl(255) == 255
+
+    def test_rounds_up_to_32(self):
+        assert _initial_ttl(30) == 32
+
+
+class TestGuessOs:
+    def test_linux_by_window(self):
+        assert _guess_os(64, 29200) == "Linux"
+        assert _guess_os(60, 14600) == "Linux"
+        assert _guess_os(64,  5840) == "Linux"
+
+    def test_macos_ios_by_window(self):
+        assert _guess_os(64, 65535) == "macOS / iOS / FreeBSD"
+
+    def test_unknown_unix_window(self):
+        assert _guess_os(64, 12345) == "Linux / Unix"
+
+    def test_windows_by_ttl(self):
+        assert _guess_os(128, 8192)  == "Windows"
+        assert _guess_os(110, 65535) == "Windows"
+
+    def test_cisco_by_ttl(self):
+        assert _guess_os(255, 4096) == "Cisco / Network Device"
+        assert _guess_os(200, 4096) == "Cisco / Network Device"
+
+
+class TestOsFingerprinter:
+    def test_syn_ack_produces_fingerprint(self):
+        with patch("netscan.services.fingerprint.sr1", return_value=_syn_ack(ttl=64, window=29200)), \
+             patch("netscan.services.fingerprint.sr"), \
+             patch("netscan.services.fingerprint.warm_arp_cache"):
+            scanner = OsFingerprinter(verbose=False, ip="192.168.1.1", port=80, timeout=1)
+            scanner.scan()
+
+        assert scanner.get_results() == Fingerprint(ip="192.168.1.1", os="Linux", ttl=64, window=29200)
+
+    def test_no_response_returns_none(self):
+        with patch("netscan.services.fingerprint.sr1", return_value=None), \
+             patch("netscan.services.fingerprint.warm_arp_cache"):
+            scanner = OsFingerprinter(verbose=False, ip="192.168.1.1", port=80, timeout=1)
+            scanner.scan()
+
+        assert scanner.get_results() is None
+
+    def test_rst_does_not_produce_fingerprint(self):
+        with patch("netscan.services.fingerprint.sr1", return_value=_rst()), \
+             patch("netscan.services.fingerprint.warm_arp_cache"):
+            scanner = OsFingerprinter(verbose=False, ip="10.0.0.1", port=80, timeout=1)
+            scanner.scan()
+
+        assert scanner.get_results() is None
+
+    def test_auto_probe_uses_common_ports_in_parallel(self):
+        # Patch to two ports so both are probed; first SYN-ACK wins.
+        with patch("netscan.services.fingerprint._COMMON_PORTS", [80, 443]), \
+             patch("netscan.services.fingerprint.sr1", return_value=_syn_ack(64, 65535)), \
+             patch("netscan.services.fingerprint.sr"), \
+             patch("netscan.services.fingerprint.warm_arp_cache"):
+            scanner = OsFingerprinter(verbose=False, ip="10.0.0.1", port=None, timeout=1)
+            scanner.scan()
+
+        result = scanner.get_results()
+        assert result is not None
+        assert result.os == "macOS / iOS / FreeBSD"
+
+    def test_only_one_result_recorded_when_multiple_syn_acks(self):
+        # Both parallel probes return SYN-ACK; only one result should be stored.
+        with patch("netscan.services.fingerprint._COMMON_PORTS", [80, 443]), \
+             patch("netscan.services.fingerprint.sr1", return_value=_syn_ack(64, 29200)), \
+             patch("netscan.services.fingerprint.sr"), \
+             patch("netscan.services.fingerprint.warm_arp_cache"):
+            scanner = OsFingerprinter(verbose=False, ip="10.0.0.1", port=None, timeout=1)
+            scanner.scan()
+
+        assert scanner.get_results() is not None  # exactly one result, not duplicated
+
+    def test_single_port_makes_one_probe(self):
+        with patch("netscan.services.fingerprint.sr1", return_value=_syn_ack(64, 65535)) as mock_sr1, \
+             patch("netscan.services.fingerprint.sr"), \
+             patch("netscan.services.fingerprint.warm_arp_cache"):
+            scanner = OsFingerprinter(verbose=False, ip="10.0.0.1", port=80, timeout=1)
+            scanner.scan()
+
+        assert mock_sr1.call_count == 1
+
+    def test_returns_none_before_scan(self):
+        scanner = OsFingerprinter(verbose=False, ip="10.0.0.1", port=80, timeout=1)
+        assert scanner.get_results() is None
+
+    def test_sends_rst_after_syn_ack(self):
+        with patch("netscan.services.fingerprint.sr1", return_value=_syn_ack(64, 29200)), \
+             patch("netscan.services.fingerprint.sr") as mock_sr, \
+             patch("netscan.services.fingerprint.warm_arp_cache"):
+            scanner = OsFingerprinter(verbose=False, ip="10.0.0.1", port=80, timeout=1)
+            scanner.scan()
+
+        mock_sr.assert_called_once()

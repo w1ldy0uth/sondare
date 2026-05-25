@@ -15,6 +15,7 @@ from netscan.services.arp import Arp
 from netscan.services.icmp import Ping
 from netscan.services.tcp import Tcp
 from netscan.services.udp import Udp
+from netscan.services.fingerprint import OsFingerprinter
 
 
 class Target(NamedTuple):
@@ -57,6 +58,7 @@ Examples:
     sudo netscan ping [-t TIMEOUT] [-th THREADS] [-v] [--json]
     sudo netscan tcp [--target IP[:START-END]] [-t TIMEOUT] [-th THREADS] [-r RETRIES] [-v] [--json]
     sudo netscan udp [--target IP[:START-END]] [-t TIMEOUT] [-th THREADS] [-r RETRIES] [-v] [--json]
+    sudo netscan os --target IP [--port PORT] [-t TIMEOUT] [-v] [--json]
         """
     )
 
@@ -80,6 +82,13 @@ Examples:
     tcp_parser.add_argument("-th", "--threads", type=int, default=20, help="Amount of threads to use")
     tcp_parser.add_argument("-r", "--retries", type=int, default=2, help="Retries per port on no response (default: 2)")
     tcp_parser.add_argument("-v", "--verbose", action="store_true", help="Verbose mode")
+
+    # OS fingerprint
+    os_parser = subparsers.add_parser("os", parents=[shared], help="Guess the OS of a target host via TCP SYN-ACK analysis.")
+    os_parser.add_argument("--target", required=True, help="Target IP address")
+    os_parser.add_argument("--port", type=int, default=None, help="Port to probe (default: auto-tries common ports)")
+    os_parser.add_argument("-t", "--timeout", type=int, default=3, help="Timeout per probe in seconds (default: 3)")
+    os_parser.add_argument("-v", "--verbose", action="store_true", help="Verbose mode")
 
     # UDP scan
     udp_parser = subparsers.add_parser("udp", parents=[shared], help="Scan ports of target host with UDP packets.")
@@ -153,6 +162,28 @@ def main() -> None:
                 print(f"Open ports: {len(results)}\n_______________________")
                 for port in results:
                     print(f"{port.ip}:{port.port} is open")
+
+        elif args.scan_method == "os":
+            port_hint = f":{args.port}" if args.port else " (auto)"
+            print(f"Fingerprinting {args.target}{port_hint} with {args.timeout}s timeout")
+            scanner = OsFingerprinter(
+                verbose=args.verbose,
+                ip=args.target,
+                port=args.port,
+                timeout=args.timeout,
+            )
+            scanner.scan()
+            result = scanner.get_results()
+
+            if result is None:
+                print("No SYN-ACK received — could not fingerprint host.")
+            elif args.json:
+                print(json.dumps({"ip": result.ip, "os": result.os, "ttl": result.ttl, "window": result.window}))
+            else:
+                print(f"IP:     {result.ip}")
+                print(f"OS:     {result.os}")
+                print(f"TTL:    {result.ttl}")
+                print(f"Window: {result.window}")
 
         elif args.scan_method == "udp":
             target: Target = args.target or parse_target(system_utils.get_ip_address())
