@@ -1,17 +1,6 @@
-import socket
 from unittest.mock import patch, MagicMock
 from netscan.services.arp import Arp
 from netscan.models import Host
-
-
-def _make_net_mocks():
-    addr = MagicMock()
-    addr.family = socket.AF_INET
-    addr.address = "192.168.1.5"
-    addr.netmask = "255.255.255.0"
-    stat = MagicMock()
-    stat.isup = True
-    return {"eth0": [addr]}, {"eth0": stat}
 
 
 def test_get_results_before_scan_returns_empty():
@@ -19,8 +8,8 @@ def test_get_results_before_scan_returns_empty():
     assert scanner.get_results() == []
 
 
-def test_scan_calls_srp_with_correct_args():
-    addrs, stats = _make_net_mocks()
+def test_scan_calls_srp_with_correct_args(net_mocks):
+    addrs, stats = net_mocks()
     with patch("psutil.net_if_addrs", return_value=addrs), \
          patch("psutil.net_if_stats", return_value=stats), \
          patch("netscan.services.arp.srp", return_value=([], None)) as mock_srp, \
@@ -35,7 +24,7 @@ def test_scan_calls_srp_with_correct_args():
     assert call_kwargs["promisc"] is False
 
 
-def test_get_results_returns_host_list():
+def test_get_results_returns_host_list(net_mocks):
     sent = MagicMock()
     rcv1 = MagicMock()
     rcv1.psrc = "192.168.1.2"
@@ -44,7 +33,7 @@ def test_get_results_returns_host_list():
     rcv2.psrc = "192.168.1.3"
     rcv2.hwsrc = "aa:bb:cc:dd:ee:02"
 
-    addrs, stats = _make_net_mocks()
+    addrs, stats = net_mocks()
     with patch("psutil.net_if_addrs", return_value=addrs), \
          patch("psutil.net_if_stats", return_value=stats), \
          patch("netscan.services.arp.srp", return_value=([(sent, rcv1), (sent, rcv2)], None)), \
@@ -59,8 +48,8 @@ def test_get_results_returns_host_list():
     ]
 
 
-def test_scan_with_no_responses_returns_empty():
-    addrs, stats = _make_net_mocks()
+def test_scan_with_no_responses_returns_empty(net_mocks):
+    addrs, stats = net_mocks()
     with patch("psutil.net_if_addrs", return_value=addrs), \
          patch("psutil.net_if_stats", return_value=stats), \
          patch("netscan.services.arp.srp", return_value=([], None)), \

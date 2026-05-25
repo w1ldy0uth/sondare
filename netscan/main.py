@@ -29,6 +29,8 @@ class Target(NamedTuple):
 
 
 _TARGET_RE = re.compile(r"([^:]+)(?::(\d+)(?:-(\d+))?)?")
+_DEFAULT_PORT_BEGIN = 1
+_DEFAULT_PORT_END = 1000
 
 
 def parse_target(value: str) -> Target:
@@ -38,14 +40,20 @@ def parse_target(value: str) -> Target:
         raise argparse.ArgumentTypeError(f"Invalid target format: '{value}'. Expected ip, ip:port, or ip:start-end.")
     ip = match.group(1)
     if match.group(2) is None:
-        return Target(ip, 1, 1000)
+        return Target(ip, _DEFAULT_PORT_BEGIN, _DEFAULT_PORT_END)
     start = int(match.group(2))
     end = int(match.group(3)) if match.group(3) else start
+    if start < 1:
+        raise argparse.ArgumentTypeError(f"Port {start} out of range (1-65535).")
     if start > end:
         raise argparse.ArgumentTypeError(f"Start port {start} must be <= end port {end}.")
     if end > 65535:
-        raise argparse.ArgumentTypeError(f"Port {end} out of range (0-65535).")
+        raise argparse.ArgumentTypeError(f"Port {end} out of range (1-65535).")
     return Target(ip, start, end)
+
+
+def _fmt_port_range(begin: int, end: int) -> str:
+    return str(begin) if begin == end else f"{begin}-{end}"
 
 
 def parse_args() -> argparse.ArgumentParser:
@@ -176,7 +184,7 @@ def main() -> None:
 
         elif args.scan_method == "tcp":
             target: Target = args.target or parse_target(system_utils.get_ip_address())
-            port_range = str(target.port_begin) if target.port_begin == target.port_end else f"{target.port_begin}-{target.port_end}"
+            port_range = _fmt_port_range(target.port_begin, target.port_end)
             print(f"Running TCP scan for {target.ip}:{port_range} with {args.timeout}s timeout, {args.threads} {'thread' if args.threads == 1 else 'threads'}, {args.retries} retr{'y' if args.retries == 1 else 'ies'}")
             scanner = Tcp(
                 verbose=args.verbose,
@@ -221,7 +229,7 @@ def main() -> None:
 
         elif args.scan_method == "udp":
             target: Target = args.target or parse_target(system_utils.get_ip_address())
-            port_range = str(target.port_begin) if target.port_begin == target.port_end else f"{target.port_begin}-{target.port_end}"
+            port_range = _fmt_port_range(target.port_begin, target.port_end)
             print(f"Running UDP scan for {target.ip}:{port_range} with {args.timeout}s timeout, {args.threads} {'thread' if args.threads == 1 else 'threads'}, {args.retries} retr{'y' if args.retries == 1 else 'ies'}")
             scanner = Udp(
                 verbose=args.verbose,

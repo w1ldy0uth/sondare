@@ -13,11 +13,11 @@ from netscan.utils.adaptive import AdaptivePool
 class Ping:
     """Discovers live hosts on the local network via ICMP echo."""
 
-    def __init__(self, verbose: bool, timeout: int, threads: int) -> None:
+    def __init__(self, verbose: bool, timeout: float, threads: int) -> None:
         self.verbose = verbose
         self.threads = threads
 
-        self._pool = AdaptivePool(max_threads=threads, timeout=float(timeout))
+        self._pool = AdaptivePool(max_threads=threads, timeout=timeout)
         self._lock = threading.Lock()
         self.q: Queue[str] = Queue()
 

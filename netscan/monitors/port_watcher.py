@@ -11,7 +11,12 @@ from netscan.utils.system_utils import warm_arp_cache
 
 
 def _syn_scan(ip: str, port_begin: int, port_end: int, timeout: float, threads: int, verbose: bool) -> set[int]:
-    """Silent SYN scan; returns the set of open ports with no console output."""
+    """SYN scan that returns open ports with no console output.
+
+    Deliberately simpler than Tcp.check_port: no retries and no AdaptivePool,
+    because the monitor wants a fast, quiet snapshot rather than reliable
+    per-port confirmation.
+    """
     open_ports: set[int] = set()
     lock = threading.Lock()
     q: Queue[int] = Queue()

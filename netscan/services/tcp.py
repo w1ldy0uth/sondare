@@ -14,7 +14,7 @@ from netscan.utils.adaptive import AdaptivePool
 class Tcp:
     """Scans TCP ports on a target host using SYN packets."""
 
-    def __init__(self, verbose: bool, ip: str, port_begin: int, port_end: int, timeout: int, threads: int, retries: int) -> None:
+    def __init__(self, verbose: bool, ip: str, port_begin: int, port_end: int, timeout: float, threads: int, retries: int) -> None:
         self.verbose = verbose
         self.ip = ip
         self.threads = threads
@@ -22,7 +22,7 @@ class Tcp:
         self.port_end = port_end
         self.retries = retries
 
-        self._pool = AdaptivePool(max_threads=threads, timeout=float(timeout), adapt_concurrency=True)
+        self._pool = AdaptivePool(max_threads=threads, timeout=timeout, adapt_concurrency=True)
         self._lock = threading.Lock()
         self.q: Queue[int] = Queue()
 

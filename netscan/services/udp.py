@@ -13,7 +13,7 @@ from netscan.utils.adaptive import AdaptivePool
 class Udp:
     """Scans UDP ports on a target host."""
 
-    def __init__(self, verbose: bool, ip: str, port_begin: int, port_end: int, timeout: int, threads: int, retries: int) -> None:
+    def __init__(self, verbose: bool, ip: str, port_begin: int, port_end: int, timeout: float, threads: int, retries: int) -> None:
         self.verbose = verbose
         self.ip = ip
         self.threads = threads
@@ -21,7 +21,7 @@ class Udp:
         self.port_end = port_end
         self.retries = retries
 
-        self._pool = AdaptivePool(max_threads=threads, timeout=float(timeout))
+        self._pool = AdaptivePool(max_threads=threads, timeout=timeout)
         self._lock = threading.Lock()
         self.q: Queue[int] = Queue()
 

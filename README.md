@@ -158,6 +158,4 @@ monitor traffic:
 - [x] Adaptive scan algorithm (AIMD concurrency + RTT-based timeout for TCP, ICMP, UDP and OS fingerprinting)
 - [x] OS fingerprinting
 - [x] Real-time packet capture / host monitoring (ARP watcher, host reachability table, port watcher, traffic sniffer)
-- [ ] Wireless scan
-- [ ] Access to neighbouring subnets
 - [ ] Data visualisation

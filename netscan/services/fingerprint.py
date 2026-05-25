@@ -42,11 +42,11 @@ def _guess_os(ttl: int, window: int) -> str:
 class OsFingerprinter:
     """Guesses the OS of a host by analysing a TCP SYN-ACK response."""
 
-    def __init__(self, verbose: bool, ip: str, port: int | None, timeout: int) -> None:
+    def __init__(self, verbose: bool, ip: str, port: int | None, timeout: float) -> None:
         self.verbose = verbose
         self.ip = ip
         self.port = port
-        self._pool = AdaptivePool(max_threads=len(_COMMON_PORTS), timeout=float(timeout))
+        self._pool = AdaptivePool(max_threads=len(_COMMON_PORTS), timeout=timeout)
         self._result: Fingerprint | None = None
         self._lock = threading.Lock()
         self._found = threading.Event()

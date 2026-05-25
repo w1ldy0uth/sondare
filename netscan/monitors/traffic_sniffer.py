@@ -3,6 +3,7 @@
 
 from datetime import datetime
 from scapy.all import IP, TCP, UDP, ICMP, ARP, sniff
+from scapy.packet import Packet
 from netscan.utils.system_utils import get_network_interface
 
 _TCP_FLAGS: dict[int, str] = {
@@ -24,7 +25,7 @@ _ICMP_TYPES: dict[int, str] = {
 }
 
 
-def _tcp_info(pkt) -> tuple[str, str, str]:
+def _tcp_info(pkt: Packet) -> tuple[str, str, str]:
     ip, tcp = pkt.getlayer(IP), pkt.getlayer(TCP)
     src = f"{ip.src}:{tcp.sport}"
     dst = f"{ip.dst}:{tcp.dport}"
@@ -32,18 +33,18 @@ def _tcp_info(pkt) -> tuple[str, str, str]:
     return src, dst, info
 
 
-def _udp_info(pkt) -> tuple[str, str, str]:
+def _udp_info(pkt: Packet) -> tuple[str, str, str]:
     ip, udp = pkt.getlayer(IP), pkt.getlayer(UDP)
     return f"{ip.src}:{udp.sport}", f"{ip.dst}:{udp.dport}", ""
 
 
-def _icmp_info(pkt) -> tuple[str, str, str]:
+def _icmp_info(pkt: Packet) -> tuple[str, str, str]:
     ip, icmp = pkt.getlayer(IP), pkt.getlayer(ICMP)
     info = _ICMP_TYPES.get(icmp.type, f"type={icmp.type}")
     return ip.src, ip.dst, info
 
 
-def _arp_info(pkt) -> tuple[str, str, str]:
+def _arp_info(pkt: Packet) -> tuple[str, str, str]:
     arp = pkt.getlayer(ARP)
     if arp.op == 1:
         info = f"who has {arp.pdst}?"
@@ -66,7 +67,7 @@ class TrafficSniffer:
         self._verbose = verbose
         self._filter = bpf_filter or ""
 
-    def _handle(self, pkt) -> None:
+    def _handle(self, pkt: Packet) -> None:
         ts = datetime.now().strftime("%H:%M:%S")
 
         if pkt.haslayer(TCP) and pkt.haslayer(IP):

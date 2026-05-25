@@ -4,6 +4,7 @@
 import threading
 from datetime import datetime
 from scapy.all import ARP, Ether, srp, sniff
+from scapy.packet import Packet
 from netscan.utils.system_utils import get_subnet, get_network_interface
 
 
@@ -15,7 +16,7 @@ class ArpWatcher:
       CHANGED — same IP, different MAC (potential ARP spoofing)
     """
 
-    def __init__(self, verbose: bool, timeout: int) -> None:
+    def __init__(self, verbose: bool, timeout: float) -> None:
         self.verbose = verbose
         self._timeout = timeout
         self._hosts: dict[str, str] = {}  # ip -> mac
@@ -40,7 +41,7 @@ class ArpWatcher:
             for ip, mac in sorted(self._hosts.items()):
                 print(f"  {ip.ljust(16)}{mac}")
 
-    def _handle(self, pkt) -> None:
+    def _handle(self, pkt: Packet) -> None:
         arp = pkt.getlayer(ARP)
         if arp is None:
             return
