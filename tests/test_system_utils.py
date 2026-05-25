@@ -1,7 +1,7 @@
 import socket
 import pytest
 from unittest.mock import patch, MagicMock
-from netscan.utils import system_utils
+from sondare.utils import system_utils
 
 
 def _make_addr(family, address, netmask="255.255.255.0"):

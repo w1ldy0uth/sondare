@@ -5,9 +5,9 @@ import random
 import threading
 import time
 from scapy.all import IP, TCP, sr1, sr
-from netscan.models import Fingerprint
-from netscan.utils.system_utils import warm_arp_cache
-from netscan.utils.adaptive import AdaptivePool
+from sondare.models import Fingerprint
+from sondare.utils.system_utils import warm_arp_cache
+from sondare.utils.adaptive import AdaptivePool
 
 # Ports tried in parallel when no specific port is given.
 _COMMON_PORTS = [80, 443, 22, 8080, 21, 25, 3389, 445, 23, 53]

@@ -1,6 +1,6 @@
 import argparse
 import pytest
-from netscan.main import parse_target, Target
+from sondare.main import parse_target, Target
 
 
 def test_ip_only_defaults_ports():

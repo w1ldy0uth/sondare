@@ -1,5 +1,5 @@
 from unittest.mock import MagicMock, patch
-from netscan.monitors.traffic_sniffer import TrafficSniffer, _tcp_info, _udp_info, _icmp_info, _arp_info
+from sondare.monitors.traffic_sniffer import TrafficSniffer, _tcp_info, _udp_info, _icmp_info, _arp_info
 
 
 def _make_ip(src="192.168.1.1", dst="192.168.1.2"):
@@ -177,22 +177,22 @@ class TestTrafficSniffer:
 
     def test_sniff_passes_filter_to_scapy(self):
         s = _sniffer(bpf_filter="udp")
-        with patch("netscan.monitors.traffic_sniffer.get_network_interface", return_value="en0"), \
-             patch("netscan.monitors.traffic_sniffer.sniff") as mock_sniff:
+        with patch("sondare.monitors.traffic_sniffer.get_network_interface", return_value="en0"), \
+             patch("sondare.monitors.traffic_sniffer.sniff") as mock_sniff:
             s.sniff()
         mock_sniff.assert_called_once()
         assert mock_sniff.call_args.kwargs["filter"] == "udp"
 
     def test_sniff_uses_correct_iface(self):
         s = _sniffer()
-        with patch("netscan.monitors.traffic_sniffer.get_network_interface", return_value="eth0"), \
-             patch("netscan.monitors.traffic_sniffer.sniff") as mock_sniff:
+        with patch("sondare.monitors.traffic_sniffer.get_network_interface", return_value="eth0"), \
+             patch("sondare.monitors.traffic_sniffer.sniff") as mock_sniff:
             s.sniff()
         assert mock_sniff.call_args.kwargs["iface"] == "eth0"
 
     def test_sniff_no_promisc(self):
         s = _sniffer()
-        with patch("netscan.monitors.traffic_sniffer.get_network_interface", return_value="en0"), \
-             patch("netscan.monitors.traffic_sniffer.sniff") as mock_sniff:
+        with patch("sondare.monitors.traffic_sniffer.get_network_interface", return_value="en0"), \
+             patch("sondare.monitors.traffic_sniffer.sniff") as mock_sniff:
             s.sniff()
         assert mock_sniff.call_args.kwargs["promisc"] is False

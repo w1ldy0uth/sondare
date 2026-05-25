@@ -1,5 +1,5 @@
 from unittest.mock import MagicMock, patch
-from netscan.monitors.hosts_watcher import HostsWatcher
+from sondare.monitors.hosts_watcher import HostsWatcher
 
 
 def _monitor(hosts=None, interval=30, auto_discover=False) -> HostsWatcher:
@@ -31,12 +31,12 @@ class TestUpDownMonitor:
         icmp_reply = MagicMock()
         icmp_reply.haslayer.return_value = True
         icmp_reply.getlayer.return_value = MagicMock(type=0)
-        with patch("netscan.monitors.hosts_watcher.sr1", return_value=icmp_reply):
+        with patch("sondare.monitors.hosts_watcher.sr1", return_value=icmp_reply):
             assert m._ping("192.168.1.1") is True
 
     def test_ping_returns_false_on_no_response(self):
         m = _monitor()
-        with patch("netscan.monitors.hosts_watcher.sr1", return_value=None):
+        with patch("sondare.monitors.hosts_watcher.sr1", return_value=None):
             assert m._ping("192.168.1.1") is False
 
     def test_ping_returns_false_on_non_echo_reply(self):
@@ -44,7 +44,7 @@ class TestUpDownMonitor:
         pkt = MagicMock()
         pkt.haslayer.return_value = True
         pkt.getlayer.return_value = MagicMock(type=3)
-        with patch("netscan.monitors.hosts_watcher.sr1", return_value=pkt):
+        with patch("sondare.monitors.hosts_watcher.sr1", return_value=pkt):
             assert m._ping("192.168.1.1") is False
 
     def test_round_returns_result_for_every_host(self):
@@ -69,7 +69,7 @@ class TestUpDownMonitor:
     def test_state_populated_after_first_round(self):
         m = _monitor(hosts=["10.0.0.1"])
         with patch.object(m, "_round", return_value={"10.0.0.1": True}), \
-             patch("netscan.monitors.hosts_watcher.time.sleep", side_effect=KeyboardInterrupt):
+             patch("sondare.monitors.hosts_watcher.time.sleep", side_effect=KeyboardInterrupt):
             try:
                 m.watch()
             except KeyboardInterrupt:
@@ -88,7 +88,7 @@ class TestUpDownMonitor:
             return {"10.0.0.1": True}
 
         with patch.object(m, "_round", side_effect=fake_round), \
-             patch("netscan.monitors.hosts_watcher.time.sleep", side_effect=_two_sleeps_then_interrupt()):
+             patch("sondare.monitors.hosts_watcher.time.sleep", side_effect=_two_sleeps_then_interrupt()):
             try:
                 m.watch()
             except KeyboardInterrupt:
@@ -106,7 +106,7 @@ class TestUpDownMonitor:
             return {"10.0.0.1": True} if call_count == 1 else {"10.0.0.1": False}
 
         with patch.object(m, "_round", side_effect=fake_round), \
-             patch("netscan.monitors.hosts_watcher.time.sleep", side_effect=_two_sleeps_then_interrupt()):
+             patch("sondare.monitors.hosts_watcher.time.sleep", side_effect=_two_sleeps_then_interrupt()):
             try:
                 m.watch()
             except KeyboardInterrupt:
@@ -157,9 +157,9 @@ class TestUpDownMonitor:
 
         rounds = iter([{"10.0.0.1": True}, {"10.0.0.1": True, "10.0.0.2": True}])
 
-        with patch("netscan.monitors.hosts_watcher._arp_scan", side_effect=fake_arp), \
+        with patch("sondare.monitors.hosts_watcher._arp_scan", side_effect=fake_arp), \
              patch.object(m, "_round", side_effect=lambda: next(rounds)), \
-             patch("netscan.monitors.hosts_watcher.time.sleep", side_effect=_two_sleeps_then_interrupt()):
+             patch("sondare.monitors.hosts_watcher.time.sleep", side_effect=_two_sleeps_then_interrupt()):
             try:
                 m.watch()
             except KeyboardInterrupt:
@@ -181,9 +181,9 @@ class TestUpDownMonitor:
             {"10.0.0.1": True},
         ])
 
-        with patch("netscan.monitors.hosts_watcher._arp_scan", side_effect=fake_arp), \
+        with patch("sondare.monitors.hosts_watcher._arp_scan", side_effect=fake_arp), \
              patch.object(m, "_round", side_effect=lambda: next(rounds)), \
-             patch("netscan.monitors.hosts_watcher.time.sleep", side_effect=_two_sleeps_then_interrupt()):
+             patch("sondare.monitors.hosts_watcher.time.sleep", side_effect=_two_sleeps_then_interrupt()):
             try:
                 m.watch()
             except KeyboardInterrupt:
@@ -193,9 +193,9 @@ class TestUpDownMonitor:
 
     def test_fixed_hosts_not_refreshed(self):
         m = _monitor(hosts=["10.0.0.1"], auto_discover=False)
-        with patch("netscan.monitors.hosts_watcher._arp_scan") as mock_arp, \
+        with patch("sondare.monitors.hosts_watcher._arp_scan") as mock_arp, \
              patch.object(m, "_round", return_value={"10.0.0.1": True}), \
-             patch("netscan.monitors.hosts_watcher.time.sleep", side_effect=KeyboardInterrupt):
+             patch("sondare.monitors.hosts_watcher.time.sleep", side_effect=KeyboardInterrupt):
             try:
                 m.watch()
             except KeyboardInterrupt:

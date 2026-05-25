@@ -5,7 +5,7 @@ import threading
 import time
 from datetime import datetime
 from scapy.all import IP, ICMP, ARP, Ether, sr1, srp
-from netscan.utils.system_utils import get_subnet, get_network_interface
+from sondare.utils.system_utils import get_subnet, get_network_interface
 
 
 def _arp_scan(timeout: int, verbose: bool) -> list[str]:

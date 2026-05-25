@@ -9,16 +9,16 @@ import threading
 from datetime import datetime
 
 from scapy.all import ARP, Ether, IP, ICMP, srp, sr1, conf
-from netscan.models import Host
-from netscan.services.fingerprint import OsFingerprinter
-from netscan.utils.system_utils import get_subnet, get_network_interface, get_ip_address
+from sondare.models import Host
+from sondare.services.fingerprint import OsFingerprinter
+from sondare.utils.system_utils import get_subnet, get_network_interface, get_ip_address
 
 _HTML_TEMPLATE = """\
 <!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
-<title>netScan — Network Graph</title>
+<title>sondare — Network Graph</title>
 <script src="https://unpkg.com/vis-network@9.1.9/dist/vis-network.min.js"></script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -44,7 +44,7 @@ body { background: #0d1117; color: #c9d1d9; font-family: 'Courier New', monospac
 <body>
 <div id="graph"></div>
 <div id="info">
-  <h3>netScan</h3>
+  <h3>sondare</h3>
   <div><span>Subnet:  </span>SUBNET</div>
   <div><span>Hosts:   </span>HOST_COUNT</div>
   <div><span>Scanned: </span>SCAN_TIME</div>

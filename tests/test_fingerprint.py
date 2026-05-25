@@ -1,6 +1,6 @@
 from unittest.mock import patch, MagicMock
-from netscan.services.fingerprint import OsFingerprinter, _initial_ttl, _guess_os
-from netscan.models import Fingerprint
+from sondare.services.fingerprint import OsFingerprinter, _initial_ttl, _guess_os
+from sondare.models import Fingerprint
 
 
 def _syn_ack(ttl: int, window: int):
@@ -64,25 +64,25 @@ class TestGuessOs:
 
 class TestOsFingerprinter:
     def test_syn_ack_produces_fingerprint(self):
-        with patch("netscan.services.fingerprint.sr1", return_value=_syn_ack(ttl=64, window=29200)), \
-             patch("netscan.services.fingerprint.sr"), \
-             patch("netscan.services.fingerprint.warm_arp_cache"):
+        with patch("sondare.services.fingerprint.sr1", return_value=_syn_ack(ttl=64, window=29200)), \
+             patch("sondare.services.fingerprint.sr"), \
+             patch("sondare.services.fingerprint.warm_arp_cache"):
             scanner = OsFingerprinter(verbose=False, ip="192.168.1.1", port=80, timeout=1)
             scanner.scan()
 
         assert scanner.get_results() == Fingerprint(ip="192.168.1.1", os="Linux", ttl=64, window=29200)
 
     def test_no_response_returns_none(self):
-        with patch("netscan.services.fingerprint.sr1", return_value=None), \
-             patch("netscan.services.fingerprint.warm_arp_cache"):
+        with patch("sondare.services.fingerprint.sr1", return_value=None), \
+             patch("sondare.services.fingerprint.warm_arp_cache"):
             scanner = OsFingerprinter(verbose=False, ip="192.168.1.1", port=80, timeout=1)
             scanner.scan()
 
         assert scanner.get_results() is None
 
     def test_rst_does_not_produce_fingerprint(self):
-        with patch("netscan.services.fingerprint.sr1", return_value=_rst()), \
-             patch("netscan.services.fingerprint.warm_arp_cache"):
+        with patch("sondare.services.fingerprint.sr1", return_value=_rst()), \
+             patch("sondare.services.fingerprint.warm_arp_cache"):
             scanner = OsFingerprinter(verbose=False, ip="10.0.0.1", port=80, timeout=1)
             scanner.scan()
 
@@ -90,10 +90,10 @@ class TestOsFingerprinter:
 
     def test_auto_probe_uses_common_ports_in_parallel(self):
         # Patch to two ports so both are probed; first SYN-ACK wins.
-        with patch("netscan.services.fingerprint._COMMON_PORTS", [80, 443]), \
-             patch("netscan.services.fingerprint.sr1", return_value=_syn_ack(64, 65535)), \
-             patch("netscan.services.fingerprint.sr"), \
-             patch("netscan.services.fingerprint.warm_arp_cache"):
+        with patch("sondare.services.fingerprint._COMMON_PORTS", [80, 443]), \
+             patch("sondare.services.fingerprint.sr1", return_value=_syn_ack(64, 65535)), \
+             patch("sondare.services.fingerprint.sr"), \
+             patch("sondare.services.fingerprint.warm_arp_cache"):
             scanner = OsFingerprinter(verbose=False, ip="10.0.0.1", port=None, timeout=1)
             scanner.scan()
 
@@ -103,19 +103,19 @@ class TestOsFingerprinter:
 
     def test_only_one_result_recorded_when_multiple_syn_acks(self):
         # Both parallel probes return SYN-ACK; only one result should be stored.
-        with patch("netscan.services.fingerprint._COMMON_PORTS", [80, 443]), \
-             patch("netscan.services.fingerprint.sr1", return_value=_syn_ack(64, 29200)), \
-             patch("netscan.services.fingerprint.sr"), \
-             patch("netscan.services.fingerprint.warm_arp_cache"):
+        with patch("sondare.services.fingerprint._COMMON_PORTS", [80, 443]), \
+             patch("sondare.services.fingerprint.sr1", return_value=_syn_ack(64, 29200)), \
+             patch("sondare.services.fingerprint.sr"), \
+             patch("sondare.services.fingerprint.warm_arp_cache"):
             scanner = OsFingerprinter(verbose=False, ip="10.0.0.1", port=None, timeout=1)
             scanner.scan()
 
         assert scanner.get_results() is not None  # exactly one result, not duplicated
 
     def test_single_port_makes_one_probe(self):
-        with patch("netscan.services.fingerprint.sr1", return_value=_syn_ack(64, 65535)) as mock_sr1, \
-             patch("netscan.services.fingerprint.sr"), \
-             patch("netscan.services.fingerprint.warm_arp_cache"):
+        with patch("sondare.services.fingerprint.sr1", return_value=_syn_ack(64, 65535)) as mock_sr1, \
+             patch("sondare.services.fingerprint.sr"), \
+             patch("sondare.services.fingerprint.warm_arp_cache"):
             scanner = OsFingerprinter(verbose=False, ip="10.0.0.1", port=80, timeout=1)
             scanner.scan()
 
@@ -126,9 +126,9 @@ class TestOsFingerprinter:
         assert scanner.get_results() is None
 
     def test_sends_rst_after_syn_ack(self):
-        with patch("netscan.services.fingerprint.sr1", return_value=_syn_ack(64, 29200)), \
-             patch("netscan.services.fingerprint.sr") as mock_sr, \
-             patch("netscan.services.fingerprint.warm_arp_cache"):
+        with patch("sondare.services.fingerprint.sr1", return_value=_syn_ack(64, 29200)), \
+             patch("sondare.services.fingerprint.sr") as mock_sr, \
+             patch("sondare.services.fingerprint.warm_arp_cache"):
             scanner = OsFingerprinter(verbose=False, ip="10.0.0.1", port=80, timeout=1)
             scanner.scan()
 

@@ -141,4 +141,4 @@ dmypy.json
 cython_debug/
 
 # Virtual environment created by script
-netscan_venv/
+sondare_venv/

@@ -1,8 +1,10 @@
-# netScan
+# sondare
+
+> *From italian: <u>sonda</u> di <u>re</u>te - network probe*
 
 ## About
 
-**netScan** is a Python CLI tool for auditing local networks, built on top of [Scapy](https://scapy.net/). It provides scanning and fingerprinting methods, each running with multithreaded packet dispatch for speed.
+**sondare** is a Python CLI tool for auditing local networks, built on top of [Scapy](https://scapy.net/). It provides scanning and fingerprinting methods, each running with multithreaded packet dispatch for speed.
 
 - **ARP** — discovers all active hosts on the local subnet (cannot be blocked by firewalls)
 - **ICMP** — pings all hosts to check reachability
@@ -22,22 +24,22 @@
 
 ```bash
 ./init.sh
-source netscan_venv/bin/activate
+source sondare_venv/bin/activate
 ```
 
 ### Windows
 
 ```bat
 init.bat
-call netscan_venv\Scripts\activate
+call sondare_venv\Scripts\activate
 ```
 
-`init.sh` / `init.bat` creates a virtual environment and runs `pip install -e .`, which installs all dependencies and registers the `netscan` command.
+`init.sh` / `init.bat` creates a virtual environment and runs `pip install -e .`, which installs all dependencies and registers the `sondare` command.
 
 ## Usage
 
 ```bash
-sudo netscan <command> [options]
+sudo sondare <command> [options]
 ```
 
 ### Commands
@@ -59,52 +61,52 @@ sudo netscan <command> [options]
 
 ```bash
 # Discover all hosts via ARP
-sudo netscan arp
+sudo sondare arp
 
 # Discover live hosts via ICMP with 10s timeout
-sudo netscan ping -t 10
+sudo sondare ping -t 10
 
 # Scan ports 1–1024 on a target
-sudo netscan tcp --target 192.168.1.1:1-1024
+sudo sondare tcp --target 192.168.1.1:1-1024
 
 # Scan a single port
-sudo netscan tcp --target 192.168.1.1:80
+sudo sondare tcp --target 192.168.1.1:80
 
 # UDP scan of common ports
-sudo netscan udp --target 192.168.1.1:1-1024
+sudo sondare udp --target 192.168.1.1:1-1024
 
 # Fingerprint a host OS (auto-probes common ports)
-sudo netscan os --target 192.168.1.1
+sudo sondare os --target 192.168.1.1
 
 # Fingerprint using a known-open port
-sudo netscan os --target 192.168.1.1 --port 80
+sudo sondare os --target 192.168.1.1 --port 80
 
 # Watch for new hosts and ARP spoofing attempts
-sudo netscan monitor arp
+sudo sondare monitor arp
 
 # Monitor all hosts on the subnet (auto-discovers new/departed hosts)
-sudo netscan monitor hosts
+sudo sondare monitor hosts
 
 # Monitor specific hosts every 10s
-sudo netscan monitor hosts --hosts 192.168.1.1 192.168.1.50 -i 10
+sudo sondare monitor hosts --hosts 192.168.1.1 192.168.1.50 -i 10
 
 # Watch for port state changes on a target
-sudo netscan monitor ports --target 192.168.1.1:1-1024
+sudo sondare monitor ports --target 192.168.1.1:1-1024
 
 # Live packet capture (all traffic)
-sudo netscan monitor traffic
+sudo sondare monitor traffic
 
 # Live capture filtered to DNS
-sudo netscan monitor traffic --filter "udp port 53"
+sudo sondare monitor traffic --filter "udp port 53"
 
-# Generate a network graph (saved as netscan_graph.html)
-sudo netscan graph
+# Generate a network graph (saved as sondare_graph.html)
+sudo sondare graph
 
 # Graph with OS fingerprinting for each discovered host
-sudo netscan graph --fingerprint
+sudo sondare graph --fingerprint
 
 # Save to a custom path
-sudo netscan graph -o /tmp/my_network.html
+sudo sondare graph -o /tmp/my_network.html
 ```
 
 ### Options
@@ -163,7 +165,7 @@ monitor traffic:
 
 graph:
   --fingerprint     OS-fingerprint each discovered host (TCP SYN, falls back to ICMP TTL)
-  -o, --output      Output file path (default: netscan_graph.html)
+  -o, --output      Output file path (default: sondare_graph.html)
   -t, --timeout     ARP scan timeout in seconds (default: 3)
   -th, --threads    Concurrent fingerprint probes (default: 10)
   -v, --verbose     Verbose scapy output

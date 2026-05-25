@@ -1,5 +1,5 @@
 from unittest.mock import MagicMock, patch
-from netscan.monitors.arp_watcher import ArpWatcher
+from sondare.monitors.arp_watcher import ArpWatcher
 
 
 def _make_pkt(ip: str, mac: str) -> MagicMock:

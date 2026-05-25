@@ -1,6 +1,6 @@
 from unittest.mock import patch, MagicMock
-from netscan.services.graph import NetworkGraph, _get_gateway
-from netscan.models import Host
+from sondare.services.graph import NetworkGraph, _get_gateway
+from sondare.models import Host
 
 
 def _grapher(**kwargs) -> NetworkGraph:
@@ -21,43 +21,43 @@ def _patch_ipconfig(output: str | None):
     """Patches subprocess so _get_gateway() reads a fake ipconfig getoption response."""
     import subprocess as sp
     if output is None:
-        return patch("netscan.services.graph.subprocess.check_output",
+        return patch("sondare.services.graph.subprocess.check_output",
                      side_effect=sp.CalledProcessError(1, "ipconfig"))
-    return patch("netscan.services.graph.subprocess.check_output", return_value=output)
+    return patch("sondare.services.graph.subprocess.check_output", return_value=output)
 
 
 class TestGetGateway:
     def test_returns_gateway_ip_via_ipconfig(self):
-        with patch("netscan.services.graph.platform.system", return_value="Darwin"), \
-             patch("netscan.services.graph.get_network_interface", return_value="en0"), \
+        with patch("sondare.services.graph.platform.system", return_value="Darwin"), \
+             patch("sondare.services.graph.get_network_interface", return_value="en0"), \
              _patch_ipconfig("192.168.1.1\n"):
             assert _get_gateway() == "192.168.1.1"
 
     def test_returns_none_for_zero_gateway(self):
         mock_conf = MagicMock()
         mock_conf.route.route.return_value = ("en0", "0.0.0.0", "0.0.0.0")
-        with patch("netscan.services.graph.platform.system", return_value="Darwin"), \
-             patch("netscan.services.graph.get_network_interface", return_value="en0"), \
+        with patch("sondare.services.graph.platform.system", return_value="Darwin"), \
+             patch("sondare.services.graph.get_network_interface", return_value="en0"), \
              _patch_ipconfig("0.0.0.0\n"), \
-             patch("netscan.services.graph.conf", mock_conf):
+             patch("sondare.services.graph.conf", mock_conf):
             assert _get_gateway() is None
 
     def test_falls_back_to_scapy_on_subprocess_failure(self):
         mock_conf = MagicMock()
         mock_conf.route.route.return_value = ("en0", "192.168.1.10", "192.168.1.1")
-        with patch("netscan.services.graph.platform.system", return_value="Darwin"), \
-             patch("netscan.services.graph.get_network_interface", return_value="en0"), \
+        with patch("sondare.services.graph.platform.system", return_value="Darwin"), \
+             patch("sondare.services.graph.get_network_interface", return_value="en0"), \
              _patch_ipconfig(None), \
-             patch("netscan.services.graph.conf", mock_conf):
+             patch("sondare.services.graph.conf", mock_conf):
             assert _get_gateway() == "192.168.1.1"
 
     def test_returns_none_on_all_methods_failing(self):
         mock_conf = MagicMock()
         mock_conf.route.route.side_effect = Exception("no route")
-        with patch("netscan.services.graph.platform.system", return_value="Darwin"), \
-             patch("netscan.services.graph.get_network_interface", return_value="en0"), \
+        with patch("sondare.services.graph.platform.system", return_value="Darwin"), \
+             patch("sondare.services.graph.get_network_interface", return_value="en0"), \
              _patch_ipconfig(None), \
-             patch("netscan.services.graph.conf", mock_conf):
+             patch("sondare.services.graph.conf", mock_conf):
             assert _get_gateway() is None
 
 
@@ -138,9 +138,9 @@ class TestRun:
         out = str(tmp_path / "graph.html")
         g = _grapher(output=out)
         with patch.object(g, "_arp_scan", return_value=_hosts()), \
-             patch("netscan.services.graph._get_gateway", return_value="192.168.1.1"), \
-             patch("netscan.services.graph.get_ip_address", return_value="192.168.1.10"), \
-             patch("netscan.services.graph.get_subnet", return_value="192.168.1.0/24"):
+             patch("sondare.services.graph._get_gateway", return_value="192.168.1.1"), \
+             patch("sondare.services.graph.get_ip_address", return_value="192.168.1.10"), \
+             patch("sondare.services.graph.get_subnet", return_value="192.168.1.0/24"):
             g.run()
         assert open(out).read().startswith("<!DOCTYPE html>")
 
@@ -148,9 +148,9 @@ class TestRun:
         out = str(tmp_path / "graph.html")
         g = _grapher(output=out)
         with patch.object(g, "_arp_scan", return_value=_hosts()), \
-             patch("netscan.services.graph._get_gateway", return_value="192.168.1.1"), \
-             patch("netscan.services.graph.get_ip_address", return_value="192.168.1.10"), \
-             patch("netscan.services.graph.get_subnet", return_value="192.168.1.0/24"):
+             patch("sondare.services.graph._get_gateway", return_value="192.168.1.1"), \
+             patch("sondare.services.graph.get_ip_address", return_value="192.168.1.10"), \
+             patch("sondare.services.graph.get_subnet", return_value="192.168.1.0/24"):
             g.run()
         content = open(out).read()
         assert "192.168.1.20" in content
@@ -159,9 +159,9 @@ class TestRun:
         out = str(tmp_path / "graph.html")
         g = _grapher(output=out)
         with patch.object(g, "_arp_scan", return_value=_hosts()), \
-             patch("netscan.services.graph._get_gateway", return_value="192.168.1.1"), \
-             patch("netscan.services.graph.get_ip_address", return_value="192.168.1.10"), \
-             patch("netscan.services.graph.get_subnet", return_value="192.168.1.0/24"):
+             patch("sondare.services.graph._get_gateway", return_value="192.168.1.1"), \
+             patch("sondare.services.graph.get_ip_address", return_value="192.168.1.10"), \
+             patch("sondare.services.graph.get_subnet", return_value="192.168.1.0/24"):
             result = g.run()
         assert result == out
 
@@ -170,9 +170,9 @@ class TestRun:
         g = _grapher(output=out, fingerprint=True)
         with patch.object(g, "_arp_scan", return_value=_hosts()), \
              patch.object(g, "_fingerprint_hosts") as mock_fp, \
-             patch("netscan.services.graph._get_gateway", return_value="192.168.1.1"), \
-             patch("netscan.services.graph.get_ip_address", return_value="192.168.1.10"), \
-             patch("netscan.services.graph.get_subnet", return_value="192.168.1.0/24"):
+             patch("sondare.services.graph._get_gateway", return_value="192.168.1.1"), \
+             patch("sondare.services.graph.get_ip_address", return_value="192.168.1.10"), \
+             patch("sondare.services.graph.get_subnet", return_value="192.168.1.0/24"):
             g.run()
         mock_fp.assert_called_once()
 
@@ -181,8 +181,8 @@ class TestRun:
         g = _grapher(output=out, fingerprint=False)
         with patch.object(g, "_arp_scan", return_value=_hosts()), \
              patch.object(g, "_fingerprint_hosts") as mock_fp, \
-             patch("netscan.services.graph._get_gateway", return_value="192.168.1.1"), \
-             patch("netscan.services.graph.get_ip_address", return_value="192.168.1.10"), \
-             patch("netscan.services.graph.get_subnet", return_value="192.168.1.0/24"):
+             patch("sondare.services.graph._get_gateway", return_value="192.168.1.1"), \
+             patch("sondare.services.graph.get_ip_address", return_value="192.168.1.10"), \
+             patch("sondare.services.graph.get_subnet", return_value="192.168.1.0/24"):
             g.run()
         mock_fp.assert_not_called()

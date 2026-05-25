@@ -5,7 +5,7 @@ import threading
 from datetime import datetime
 from scapy.all import ARP, Ether, srp, sniff
 from scapy.packet import Packet
-from netscan.utils.system_utils import get_subnet, get_network_interface
+from sondare.utils.system_utils import get_subnet, get_network_interface
 
 
 class ArpWatcher:

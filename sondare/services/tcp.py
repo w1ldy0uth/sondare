@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
 # -*- coding: UTF-8 -*-
 
+import random
 import threading
 import time
 from queue import Queue
-from scapy.all import IP, UDP, ICMP, sr1
-from netscan.models import Port
-from netscan.utils.system_utils import warm_arp_cache
-from netscan.utils.adaptive import AdaptivePool
+from scapy.all import IP, TCP, sr1, sr
+from sondare.models import Port
+from sondare.utils.system_utils import warm_arp_cache
+from sondare.utils.adaptive import AdaptivePool
 
 
-class Udp:
-    """Scans UDP ports on a target host."""
+class Tcp:
+    """Scans TCP ports on a target host using SYN packets."""
 
     def __init__(self, verbose: bool, ip: str, port_begin: int, port_end: int, timeout: float, threads: int, retries: int) -> None:
         self.verbose = verbose
@@ -21,7 +22,7 @@ class Udp:
         self.port_end = port_end
         self.retries = retries
 
-        self._pool = AdaptivePool(max_threads=threads, timeout=timeout)
+        self._pool = AdaptivePool(max_threads=threads, timeout=timeout, adapt_concurrency=True)
         self._lock = threading.Lock()
         self.q: Queue[int] = Queue()
 
@@ -30,13 +31,14 @@ class Udp:
         self._total = port_end - port_begin + 1
 
     def check_port(self, target_port: int) -> None:
-        """Probes a UDP port; records it unless ICMP port-unreachable is received."""
-        for attempt in range(self.retries + 1):
+        """Probes a port up to retries+1 times; records it if any attempt gets a SYN-ACK."""
+        for _ in range(self.retries + 1):
+            source_port = random.randint(1025, 65534)
             self._pool.acquire()
             try:
                 start = time.monotonic()
                 rsp = sr1(
-                    IP(dst=self.ip) / UDP(dport=target_port),
+                    IP(dst=self.ip) / TCP(sport=source_port, dport=target_port, flags="S"),
                     timeout=self._pool.timeout,
                     verbose=self.verbose,
                     promisc=False,
@@ -48,19 +50,14 @@ class Udp:
             self._pool.record(is_timeout=(rsp is None), rtt=elapsed if rsp is not None else None)
 
             if rsp is None:
-                if attempt == self.retries:
-                    with self._lock:
-                        self.open_ports.append(Port(ip=self.ip, port=target_port))
                 continue
 
-            if rsp.haslayer(ICMP):
-                icmp = rsp.getlayer(ICMP)
-                if icmp.type == 3 and icmp.code == 3:
-                    return  # port unreachable — closed
-
-            with self._lock:
-                self.open_ports.append(Port(ip=self.ip, port=target_port))
-            return
+            if rsp.haslayer(TCP):
+                if rsp.getlayer(TCP).flags == 0x12:  # SYN-ACK: open
+                    sr(IP(dst=self.ip) / TCP(sport=source_port, dport=target_port, flags="R"), timeout=1, verbose=False, promisc=False)
+                    with self._lock:
+                        self.open_ports.append(Port(ip=self.ip, port=target_port))
+                return  # RST or anything else: definitive answer, stop retrying
 
     def _threader(self) -> None:
         """Worker: pulls ports from the queue and checks them."""
@@ -74,7 +71,7 @@ class Udp:
             self.q.task_done()
 
     def scan(self) -> None:
-        """Runs the threaded UDP scan."""
+        """Runs the threaded SYN scan."""
         warm_arp_cache(self.ip)
         thread_count = min(self.threads, self._total)
         for _ in range(thread_count):
@@ -89,5 +86,5 @@ class Udp:
         print()
 
     def get_results(self) -> list[Port]:
-        """Returns open|filtered ports discovered by scan()."""
+        """Returns open ports discovered by scan()."""
         return self.open_ports

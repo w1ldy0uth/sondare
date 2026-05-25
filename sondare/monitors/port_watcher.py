@@ -7,7 +7,7 @@ import time
 from datetime import datetime
 from queue import Queue
 from scapy.all import IP, TCP, sr1, sr
-from netscan.utils.system_utils import warm_arp_cache
+from sondare.utils.system_utils import warm_arp_cache
 
 
 def _syn_scan(ip: str, port_begin: int, port_end: int, timeout: float, threads: int, verbose: bool) -> set[int]:

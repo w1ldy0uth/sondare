@@ -2,8 +2,8 @@
 # -*- coding: UTF-8 -*-
 
 from scapy.all import ARP, srp, Ether
-from netscan.models import Host
-from netscan.utils.system_utils import get_subnet, get_network_interface
+from sondare.models import Host
+from sondare.utils.system_utils import get_subnet, get_network_interface
 
 
 class Arp:

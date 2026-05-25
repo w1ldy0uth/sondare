@@ -1,5 +1,5 @@
 from unittest.mock import patch
-from netscan.monitors.port_watcher import PortWatcher
+from sondare.monitors.port_watcher import PortWatcher
 
 
 def _watcher(port_begin=1, port_end=100, interval=60) -> PortWatcher:
@@ -31,8 +31,8 @@ class TestPortWatcher:
                 raise KeyboardInterrupt
 
         with patch.object(w, "_scan", side_effect=fake_scan), \
-             patch("netscan.monitors.port_watcher.warm_arp_cache"), \
-             patch("netscan.monitors.port_watcher.time.sleep", side_effect=KeyboardInterrupt):
+             patch("sondare.monitors.port_watcher.warm_arp_cache"), \
+             patch("sondare.monitors.port_watcher.time.sleep", side_effect=KeyboardInterrupt):
             try:
                 w.watch()
             except KeyboardInterrupt:
@@ -65,8 +65,8 @@ class TestPortWatcher:
                 raise KeyboardInterrupt
 
         with patch.object(w, "_scan", side_effect=fake_scan), \
-             patch("netscan.monitors.port_watcher.warm_arp_cache"), \
-             patch("netscan.monitors.port_watcher.time.sleep", side_effect=fake_sleep):
+             patch("sondare.monitors.port_watcher.warm_arp_cache"), \
+             patch("sondare.monitors.port_watcher.time.sleep", side_effect=fake_sleep):
             try:
                 w.watch()
             except KeyboardInterrupt:
@@ -97,8 +97,8 @@ class TestPortWatcher:
                 raise KeyboardInterrupt
 
         with patch.object(w, "_scan", side_effect=fake_scan), \
-             patch("netscan.monitors.port_watcher.warm_arp_cache"), \
-             patch("netscan.monitors.port_watcher.time.sleep", side_effect=fake_sleep):
+             patch("sondare.monitors.port_watcher.warm_arp_cache"), \
+             patch("sondare.monitors.port_watcher.time.sleep", side_effect=fake_sleep):
             try:
                 w.watch()
             except KeyboardInterrupt:
@@ -127,8 +127,8 @@ class TestPortWatcher:
                 raise KeyboardInterrupt
 
         with patch.object(w, "_scan", side_effect=fake_scan), \
-             patch("netscan.monitors.port_watcher.warm_arp_cache"), \
-             patch("netscan.monitors.port_watcher.time.sleep", side_effect=fake_sleep):
+             patch("sondare.monitors.port_watcher.warm_arp_cache"), \
+             patch("sondare.monitors.port_watcher.time.sleep", side_effect=fake_sleep):
             try:
                 w.watch()
             except KeyboardInterrupt:
@@ -159,8 +159,8 @@ class TestPortWatcher:
                 raise KeyboardInterrupt
 
         with patch.object(w, "_scan", side_effect=fake_scan), \
-             patch("netscan.monitors.port_watcher.warm_arp_cache"), \
-             patch("netscan.monitors.port_watcher.time.sleep", side_effect=fake_sleep):
+             patch("sondare.monitors.port_watcher.warm_arp_cache"), \
+             patch("sondare.monitors.port_watcher.time.sleep", side_effect=fake_sleep):
             try:
                 w.watch()
             except KeyboardInterrupt:
@@ -180,8 +180,8 @@ class TestPortWatcher:
                 raise KeyboardInterrupt
 
         with patch.object(w, "_scan", side_effect=fake_scan), \
-             patch("netscan.monitors.port_watcher.warm_arp_cache"), \
-             patch("netscan.monitors.port_watcher.time.sleep", side_effect=KeyboardInterrupt):
+             patch("sondare.monitors.port_watcher.warm_arp_cache"), \
+             patch("sondare.monitors.port_watcher.time.sleep", side_effect=KeyboardInterrupt):
             try:
                 w.watch()
             except KeyboardInterrupt:

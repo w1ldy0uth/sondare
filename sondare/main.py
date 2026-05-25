@@ -10,17 +10,17 @@ from typing import NamedTuple
 
 logging.getLogger("scapy.runtime").setLevel(logging.ERROR)
 
-import netscan.utils.system_utils as system_utils
-from netscan.services.arp import Arp
-from netscan.services.icmp import Ping
-from netscan.services.tcp import Tcp
-from netscan.services.udp import Udp
-from netscan.services.fingerprint import OsFingerprinter
-from netscan.services.graph import NetworkGraph
-from netscan.monitors.arp_watcher import ArpWatcher
-from netscan.monitors.hosts_watcher import HostsWatcher
-from netscan.monitors.port_watcher import PortWatcher
-from netscan.monitors.traffic_sniffer import TrafficSniffer
+import sondare.utils.system_utils as system_utils
+from sondare.services.arp import Arp
+from sondare.services.icmp import Ping
+from sondare.services.tcp import Tcp
+from sondare.services.udp import Udp
+from sondare.services.fingerprint import OsFingerprinter
+from sondare.services.graph import NetworkGraph
+from sondare.monitors.arp_watcher import ArpWatcher
+from sondare.monitors.hosts_watcher import HostsWatcher
+from sondare.monitors.port_watcher import PortWatcher
+from sondare.monitors.traffic_sniffer import TrafficSniffer
 
 
 class Target(NamedTuple):
@@ -62,21 +62,21 @@ def parse_args() -> argparse.ArgumentParser:
     shared.add_argument("--json", action="store_true", help="Output results as JSON")
 
     parser = argparse.ArgumentParser(
-        prog="netScan",
-        description="Manage local network hosts' information.",
+        prog="sondare",
+        description="Probe and monitor local network hosts.",
         formatter_class=argparse.RawTextHelpFormatter,
         epilog="""
 Examples:
-    sudo netscan arp [-t TIMEOUT] [-v] [--json]
-    sudo netscan ping [-t TIMEOUT] [-th THREADS] [-v] [--json]
-    sudo netscan tcp [--target IP[:START-END]] [-t TIMEOUT] [-th THREADS] [-r RETRIES] [-v] [--json]
-    sudo netscan udp [--target IP[:START-END]] [-t TIMEOUT] [-th THREADS] [-r RETRIES] [-v] [--json]
-    sudo netscan os --target IP [--port PORT] [-t TIMEOUT] [-v] [--json]
-    sudo netscan monitor arp [-t TIMEOUT] [-v]
-    sudo netscan monitor hosts [--hosts IP [IP ...]] [-i INTERVAL] [-t TIMEOUT] [-th THREADS] [-v]
-    sudo netscan monitor ports [--target IP[:START-END]] [-i INTERVAL] [-t TIMEOUT] [-th THREADS] [-v]
-    sudo netscan monitor traffic [--filter BPF] [-v]
-    sudo netscan graph [-t TIMEOUT] [-th THREADS] [--fingerprint] [-o FILE] [--no-open] [-v]
+    sudo sondare arp [-t TIMEOUT] [-v] [--json]
+    sudo sondare ping [-t TIMEOUT] [-th THREADS] [-v] [--json]
+    sudo sondare tcp [--target IP[:START-END]] [-t TIMEOUT] [-th THREADS] [-r RETRIES] [-v] [--json]
+    sudo sondare udp [--target IP[:START-END]] [-t TIMEOUT] [-th THREADS] [-r RETRIES] [-v] [--json]
+    sudo sondare os --target IP [--port PORT] [-t TIMEOUT] [-v] [--json]
+    sudo sondare monitor arp [-t TIMEOUT] [-v]
+    sudo sondare monitor hosts [--hosts IP [IP ...]] [-i INTERVAL] [-t TIMEOUT] [-th THREADS] [-v]
+    sudo sondare monitor ports [--target IP[:START-END]] [-i INTERVAL] [-t TIMEOUT] [-th THREADS] [-v]
+    sudo sondare monitor traffic [--filter BPF] [-v]
+    sudo sondare graph [-t TIMEOUT] [-th THREADS] [--fingerprint] [-o FILE] [-v]
         """
     )
 
@@ -147,7 +147,7 @@ Examples:
     graph_parser.add_argument("-t", "--timeout", type=float, default=3.0, help="ARP scan timeout in seconds (default: 3)")
     graph_parser.add_argument("-th", "--threads", type=int, default=10, help="Concurrent fingerprint probes (default: 10)")
     graph_parser.add_argument("--fingerprint", action="store_true", help="OS-fingerprint each discovered host")
-    graph_parser.add_argument("-o", "--output", default="netscan_graph.html", help="Output file path (default: netscan_graph.html)")
+    graph_parser.add_argument("-o", "--output", default="sondare_graph.html", help="Output file path (default: sondare_graph.html)")
     graph_parser.add_argument("-v", "--verbose", action="store_true", help="Verbose mode")
 
     return parser
@@ -262,7 +262,7 @@ def main() -> None:
 
         elif args.scan_method == "monitor":
             if args.monitor_type is None:
-                print("Usage: netscan monitor {arp,hosts,ports,traffic}\nRun 'netscan monitor <type> --help' for details.")
+                print("Usage: sondare monitor {arp,hosts,ports,traffic}\nRun 'sondare monitor <type> --help' for details.")
                 return
             if args.monitor_type == "arp":
                 watcher = ArpWatcher(verbose=args.verbose, timeout=args.timeout)

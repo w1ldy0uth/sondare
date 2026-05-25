@@ -6,8 +6,8 @@ import threading
 import time
 from queue import Queue
 from scapy.all import IP, ICMP, sr1
-from netscan.utils.system_utils import get_subnet
-from netscan.utils.adaptive import AdaptivePool
+from sondare.utils.system_utils import get_subnet
+from sondare.utils.adaptive import AdaptivePool
 
 
 class Ping:

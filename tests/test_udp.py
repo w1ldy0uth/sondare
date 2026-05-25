@@ -1,6 +1,6 @@
 from unittest.mock import patch, MagicMock
-from netscan.services.udp import Udp
-from netscan.models import Port
+from sondare.services.udp import Udp
+from sondare.models import Port
 
 
 def _make_scanner(**kwargs):
@@ -32,28 +32,28 @@ PORT_UNREACHABLE_CODE = 3
 class TestCheckPort:
     def test_icmp_port_unreachable_marks_closed(self):
         scanner = _make_scanner()
-        with patch("netscan.services.udp.sr1", return_value=_icmp_response(PORT_UNREACHABLE_TYPE, PORT_UNREACHABLE_CODE)):
+        with patch("sondare.services.udp.sr1", return_value=_icmp_response(PORT_UNREACHABLE_TYPE, PORT_UNREACHABLE_CODE)):
             scanner.check_port(53)
 
         assert scanner.open_ports == []
 
     def test_icmp_other_type_marks_open(self):
         scanner = _make_scanner()
-        with patch("netscan.services.udp.sr1", return_value=_icmp_response(3, 1)):  # net unreachable, not port
+        with patch("sondare.services.udp.sr1", return_value=_icmp_response(3, 1)):  # net unreachable, not port
             scanner.check_port(53)
 
         assert Port(ip="10.0.0.1", port=53) in scanner.open_ports
 
     def test_udp_response_marks_open(self):
         scanner = _make_scanner()
-        with patch("netscan.services.udp.sr1", return_value=_udp_response()):
+        with patch("sondare.services.udp.sr1", return_value=_udp_response()):
             scanner.check_port(53)
 
         assert Port(ip="10.0.0.1", port=53) in scanner.open_ports
 
     def test_no_response_exhausts_retries_then_marks_open_filtered(self):
         scanner = _make_scanner(retries=2)
-        with patch("netscan.services.udp.sr1", return_value=None) as mock_sr1:
+        with patch("sondare.services.udp.sr1", return_value=None) as mock_sr1:
             scanner.check_port(53)
 
         assert mock_sr1.call_count == 3  # initial + 2 retries
@@ -70,14 +70,14 @@ class TestCheckPort:
                 return None
             return _icmp_response(PORT_UNREACHABLE_TYPE, PORT_UNREACHABLE_CODE)
 
-        with patch("netscan.services.udp.sr1", side_effect=side_effect):
+        with patch("sondare.services.udp.sr1", side_effect=side_effect):
             scanner.check_port(53)
 
         assert scanner.open_ports == []  # closed on last attempt
 
     def test_icmp_unreachable_stops_retrying(self):
         scanner = _make_scanner(retries=3)
-        with patch("netscan.services.udp.sr1", return_value=_icmp_response(PORT_UNREACHABLE_TYPE, PORT_UNREACHABLE_CODE)) as mock_sr1:
+        with patch("sondare.services.udp.sr1", return_value=_icmp_response(PORT_UNREACHABLE_TYPE, PORT_UNREACHABLE_CODE)) as mock_sr1:
             scanner.check_port(53)
 
         assert mock_sr1.call_count == 1
@@ -85,7 +85,7 @@ class TestCheckPort:
 
     def test_udp_response_stops_retrying(self):
         scanner = _make_scanner(retries=3)
-        with patch("netscan.services.udp.sr1", return_value=_udp_response()) as mock_sr1:
+        with patch("sondare.services.udp.sr1", return_value=_udp_response()) as mock_sr1:
             scanner.check_port(53)
 
         assert mock_sr1.call_count == 1
@@ -106,7 +106,7 @@ class TestGetResults:
         }
 
         for port, rsp in responses.items():
-            with patch("netscan.services.udp.sr1", return_value=rsp):
+            with patch("sondare.services.udp.sr1", return_value=rsp):
                 scanner.check_port(port)
 
         assert set(scanner.get_results()) == {Port("10.0.0.1", 53), Port("10.0.0.1", 55)}

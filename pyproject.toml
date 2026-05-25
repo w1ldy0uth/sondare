@@ -3,9 +3,9 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "netscan"
+name = "sondare"
 version = "1.0.1"
-description = "Local network scanner using ARP, ICMP, and TCP probes."
+description = "Probe and monitor local network hosts — ARP, ICMP, TCP, UDP, OS fingerprinting, and network graph."
 requires-python = ">=3.10"
 dependencies = [
     "scapy>=2.4.5",
@@ -16,11 +16,11 @@ dependencies = [
 dev = ["pytest>=8.0"]
 
 [project.scripts]
-netscan = "netscan.main:main"
+sondare = "sondare.main:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["netscan*"]
+include = ["sondare*"]
 
 [tool.setuptools.package-data]
-netscan = ["py.typed"]
+sondare = ["py.typed"]

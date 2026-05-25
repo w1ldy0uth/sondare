@@ -4,7 +4,7 @@
 from datetime import datetime
 from scapy.all import IP, TCP, UDP, ICMP, ARP, sniff
 from scapy.packet import Packet
-from netscan.utils.system_utils import get_network_interface
+from sondare.utils.system_utils import get_network_interface
 
 _TCP_FLAGS: dict[int, str] = {
     0x02: "SYN",
