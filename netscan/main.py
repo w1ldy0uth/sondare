@@ -16,6 +16,10 @@ from netscan.services.icmp import Ping
 from netscan.services.tcp import Tcp
 from netscan.services.udp import Udp
 from netscan.services.fingerprint import OsFingerprinter
+from netscan.monitors.arp_watcher import ArpWatcher
+from netscan.monitors.hosts_watcher import HostsWatcher
+from netscan.monitors.port_watcher import PortWatcher
+from netscan.monitors.traffic_sniffer import TrafficSniffer
 
 
 class Target(NamedTuple):
@@ -59,6 +63,10 @@ Examples:
     sudo netscan tcp [--target IP[:START-END]] [-t TIMEOUT] [-th THREADS] [-r RETRIES] [-v] [--json]
     sudo netscan udp [--target IP[:START-END]] [-t TIMEOUT] [-th THREADS] [-r RETRIES] [-v] [--json]
     sudo netscan os --target IP [--port PORT] [-t TIMEOUT] [-v] [--json]
+    sudo netscan monitor arp [-t TIMEOUT] [-v]
+    sudo netscan monitor hosts [--hosts IP [IP ...]] [-i INTERVAL] [-t TIMEOUT] [-th THREADS] [-v]
+    sudo netscan monitor ports [--target IP[:START-END]] [-i INTERVAL] [-t TIMEOUT] [-th THREADS] [-v]
+    sudo netscan monitor traffic [--filter BPF] [-v]
         """
     )
 
@@ -97,6 +105,32 @@ Examples:
     udp_parser.add_argument("-th", "--threads", type=int, default=20, help="Amount of threads to use")
     udp_parser.add_argument("-r", "--retries", type=int, default=2, help="Retries per port on no response (default: 2)")
     udp_parser.add_argument("-v", "--verbose", action="store_true", help="Verbose mode")
+
+    # Monitor commands
+    monitor_parser = subparsers.add_parser("monitor", help="Real-time network monitors.")
+    monitor_sub = monitor_parser.add_subparsers(title="MONITOR TYPES", dest="monitor_type")
+
+    arp_watch_parser = monitor_sub.add_parser("arp", help="Watch for ARP traffic and report new hosts or MAC changes.")
+    arp_watch_parser.add_argument("-t", "--timeout", type=int, default=5, help="Timeout for initial ARP seed scan (default: 5)")
+    arp_watch_parser.add_argument("-v", "--verbose", action="store_true", help="Verbose mode")
+
+    updown_parser = monitor_sub.add_parser("hosts", help="Periodically ping hosts and report up/down state changes.")
+    updown_parser.add_argument("--hosts", nargs="+", metavar="IP", default=None, help="Hosts to monitor (default: discover via ARP scan)")
+    updown_parser.add_argument("-i", "--interval", type=int, default=30, help="Seconds between ping rounds (default: 30)")
+    updown_parser.add_argument("-t", "--timeout", type=float, default=2.0, help="Ping timeout in seconds (default: 2)")
+    updown_parser.add_argument("-th", "--threads", type=int, default=50, help="Concurrent pings per round (default: 50)")
+    updown_parser.add_argument("-v", "--verbose", action="store_true", help="Verbose mode")
+
+    ports_parser = monitor_sub.add_parser("ports", help="Periodically SYN-scan a target and report port state changes.")
+    ports_parser.add_argument("--target", type=parse_target, default=None, help="Target as ip, ip:port, or ip:start-end (default: local machine, ports 1-1000)")
+    ports_parser.add_argument("-i", "--interval", type=int, default=60, help="Seconds between scans (default: 60)")
+    ports_parser.add_argument("-t", "--timeout", type=float, default=3.0, help="Timeout per probe in seconds (default: 3)")
+    ports_parser.add_argument("-th", "--threads", type=int, default=20, help="Concurrent probes per scan (default: 20)")
+    ports_parser.add_argument("-v", "--verbose", action="store_true", help="Verbose mode")
+
+    traffic_parser = monitor_sub.add_parser("traffic", help="Live packet capture with per-packet protocol breakdown.")
+    traffic_parser.add_argument("--filter", metavar="BPF", default=None, help="BPF filter expression (e.g. 'tcp', 'udp port 53', 'host 192.168.1.1')")
+    traffic_parser.add_argument("-v", "--verbose", action="store_true", help="Verbose mode")
 
     return parser
 
@@ -208,8 +242,41 @@ def main() -> None:
                 for port in results:
                     print(f"{port.ip}:{port.port} is open|filtered")
 
+        elif args.scan_method == "monitor":
+            if args.monitor_type is None:
+                print("Usage: netscan monitor {arp,hosts,ports,traffic}\nRun 'netscan monitor <type> --help' for details.")
+                return
+            if args.monitor_type == "arp":
+                watcher = ArpWatcher(verbose=args.verbose, timeout=args.timeout)
+                watcher.watch()
+            elif args.monitor_type == "hosts":
+                monitor = HostsWatcher(
+                    verbose=args.verbose,
+                    hosts=args.hosts or [],
+                    timeout=args.timeout,
+                    threads=args.threads,
+                    interval=args.interval,
+                    auto_discover=args.hosts is None,
+                )
+                monitor.watch()
+            elif args.monitor_type == "ports":
+                target: Target = args.target or parse_target(system_utils.get_ip_address())
+                watcher = PortWatcher(
+                    verbose=args.verbose,
+                    ip=target.ip,
+                    port_begin=target.port_begin,
+                    port_end=target.port_end,
+                    timeout=args.timeout,
+                    threads=args.threads,
+                    interval=args.interval,
+                )
+                watcher.watch()
+            elif args.monitor_type == "traffic":
+                sniffer = TrafficSniffer(verbose=args.verbose, bpf_filter=args.filter)
+                sniffer.sniff()
+
     except KeyboardInterrupt:
-        print("\nScan interrupted.")
+        print("\nMonitor stopped.")
         sys.exit(0)
 
 

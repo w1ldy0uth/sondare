@@ -49,6 +49,10 @@ sudo netscan <command> [options]
 | `tcp` | TCP SYN port scan of a target host |
 | `udp` | UDP port scan of a target host |
 | `os` | OS fingerprint of a target host |
+| `monitor arp` | Watch for ARP traffic; report new hosts and MAC changes |
+| `monitor hosts` | Live host reachability table with auto-discovery |
+| `monitor ports` | Periodically SYN-scan a target and report port state changes |
+| `monitor traffic` | Live packet capture with per-packet protocol breakdown |
 
 ### Examples
 
@@ -73,6 +77,24 @@ sudo netscan os --target 192.168.1.1
 
 # Fingerprint using a known-open port
 sudo netscan os --target 192.168.1.1 --port 80
+
+# Watch for new hosts and ARP spoofing attempts
+sudo netscan monitor arp
+
+# Monitor all hosts on the subnet (auto-discovers new/departed hosts)
+sudo netscan monitor hosts
+
+# Monitor specific hosts every 10s
+sudo netscan monitor hosts --hosts 192.168.1.1 192.168.1.50 -i 10
+
+# Watch for port state changes on a target
+sudo netscan monitor ports --target 192.168.1.1:1-1024
+
+# Live packet capture (all traffic)
+sudo netscan monitor traffic
+
+# Live capture filtered to DNS
+sudo netscan monitor traffic --filter "udp port 53"
 ```
 
 ### Options
@@ -106,6 +128,28 @@ os:
   --port            Port to probe; omit to auto-try common ports in parallel
   -t, --timeout     Timeout per probe in seconds (default: 3)
   -v, --verbose     Verbose scapy output
+
+monitor arp:
+  -t, --timeout     Timeout for initial ARP seed scan (default: 5)
+  -v, --verbose     Verbose scapy output
+
+monitor hosts:
+  --hosts           Hosts to monitor; omit to auto-discover via ARP each round
+  -i, --interval    Seconds between ping rounds (default: 30)
+  -t, --timeout     Ping timeout in seconds (default: 2)
+  -th, --threads    Concurrent pings per round (default: 50)
+  -v, --verbose     Verbose scapy output
+
+monitor ports:
+  --target          Target as ip, ip:port, or ip:start-end (default: local machine, ports 1-1000)
+  -i, --interval    Seconds between scans (default: 60)
+  -t, --timeout     Timeout per probe in seconds (default: 3)
+  -th, --threads    Concurrent probes per scan (default: 20)
+  -v, --verbose     Verbose scapy output
+
+monitor traffic:
+  --filter          BPF filter expression (e.g. 'tcp', 'udp port 53', 'host 192.168.1.1')
+  -v, --verbose     Verbose scapy output
 ```
 
 ## Roadmap
@@ -113,7 +157,7 @@ os:
 - [x] UDP scan
 - [x] Adaptive scan algorithm (AIMD concurrency + RTT-based timeout for TCP, ICMP, UDP and OS fingerprinting)
 - [x] OS fingerprinting
+- [x] Real-time packet capture / host monitoring (ARP watcher, host reachability table, port watcher, traffic sniffer)
 - [ ] Wireless scan
-- [ ] Real-time packet capture / host monitoring
 - [ ] Access to neighbouring subnets
 - [ ] Data visualisation
