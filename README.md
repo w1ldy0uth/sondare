@@ -2,57 +2,92 @@
 
 ## About
 
-**netScan** is an application built on Python and utilizes the Scapy network tool as its foundation. Its primary objective is to offer user-friendly tools for conducting comprehensive audits of local networks. These tools encompass a diverse array of scanners and application routines.
+**netScan** is a Python CLI tool for auditing local networks, built on top of [Scapy](https://scapy.net/). It provides three scanning methods — ARP, ICMP, and TCP — each running with multithreaded packet dispatch for speed.
 
-The application employs three principal scanning techniques, each of which relies on different network protocols: ARP, ICMP, and TCP. The first two methods serve the purpose of identifying hosts within the local network, while the third method extracts port-related information from a specified host. All these methods have been meticulously designed and implemented with multithreading capabilities, enhancing their efficiency and performance.
-
-## Warning
-
-Although this application is meant to be compatible with multiple platforms, it's crucial to acknowledge that the Windows and macOS versions have not undergone testing. As a result, it may be unstable or cause unexpected behavior. Therefore, I strongly recommend using this application cautiously on macOS and Windows devices until further testing and improvements are carried out.
-
-## Features
-
-### Done
-
- - ARP scan
- - ICMP (ping) scan
- - TCP (port) scan
- - Single CLI interface
- - Wide host machine info gathering
-
-### In development
-
- - UDP scan
- - TCP adaptive scan algorithm
- 
-### Planning in future
-
- - Wireless scan
- - OS fingerprint
- - Low-level protocols support
- - Support for devices status realtime monitoring (kind of a packet capture)
- - Access to neighboring subnets 
- - Data visualization
+- **ARP** — discovers all active hosts on the local subnet (cannot be blocked by firewalls)
+- **ICMP** — pings all hosts to check reachability
+- **TCP** — performs a SYN scan on a target host to find open ports
 
 ## Requirements
 
-+ Python 3.6+
-+ winpcap or npcap (preferably) *for Windows*
+- Python 3.10+
+- Root / administrator privileges (required for raw packet access)
+- npcap (Windows only)
 
-## Usage
+## Setup
 
 ### Linux & macOS
 
 ```bash
 ./init.sh
-source netscan_env/bin/activate
-sudo python -m src.main -h
+source netscan_venv/bin/activate
 ```
 
 ### Windows
 
 ```bat
-./init.sh
-call netscan_env/bin/activate
-python -m src.main -h
+init.bat
+call netscan_venv\Scripts\activate
 ```
+
+`init.sh` / `init.bat` creates a virtual environment and runs `pip install -e .`, which installs all dependencies and registers the `netscan` command.
+
+## Usage
+
+```bash
+sudo netscan <command> [options]
+```
+
+### Commands
+
+| Command | Description |
+| --------- | ------------- |
+| `arp` | ARP scan of the local subnet |
+| `ping` | ICMP scan of the local subnet |
+| `tcp` | TCP port scan of a target host |
+
+### Examples
+
+```bash
+# Discover all hosts via ARP
+sudo netscan arp
+
+# Discover live hosts via ICMP with 10s timeout
+sudo netscan ping -t 10
+
+# Scan ports 1–1024 on a target
+sudo netscan tcp --target 192.168.1.1:1-1024
+
+# Scan a single port
+sudo netscan tcp --target 192.168.1.1:80
+```
+
+### Options
+
+```bash
+arp:
+  -t, --timeout     Packet timeout in seconds (default: 5)
+  -v, --verbose     Verbose scapy output
+
+ping:
+  -t, --timeout     Packet timeout in seconds (default: 5)
+  -th, --threads    Number of threads (default: 100)
+  -v, --verbose     Verbose scapy output
+
+tcp:
+  --target          Target as ip, ip:port, or ip:start-end (default: local machine, ports 1-1000)
+  -t, --timeout     Packet timeout in seconds (default: 3)
+  -th, --threads    Number of threads (default: 20)
+  -r, --retries     Retries per port on no response (default: 2)
+  -v, --verbose     Verbose scapy output
+```
+
+## Roadmap
+
+- [ ] UDP scan
+- [ ] TCP adaptive scan algorithm
+- [ ] OS fingerprinting
+- [ ] Wireless scan
+- [ ] Real-time packet capture / host monitoring
+- [ ] Access to neighbouring subnets
+- [ ] Data visualisation

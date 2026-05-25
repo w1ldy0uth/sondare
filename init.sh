@@ -2,10 +2,10 @@
 
 VENV_NAME="netscan_venv"
 
-python -m venv "$VENV_NAME"
+python3 -m venv "$VENV_NAME"
 source "$VENV_NAME/bin/activate"
 
-pip install -r requirements.txt
+pip install -e .
 
 echo "Virtual environment '$VENV_NAME' is set up and activated."
-echo "Packages from requirements.txt are installed."
+echo "Run 'sudo netscan --help' to get started."

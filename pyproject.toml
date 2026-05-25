@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "netscan"
+version = "1.0.1"
+description = "Local network scanner using ARP, ICMP, and TCP probes."
+requires-python = ">=3.10"
+dependencies = [
+    "scapy>=2.4.5",
+    "psutil>=5.9.5",
+]
+
+[project.scripts]
+netscan = "netscan.main:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["netscan*"]
+
+[tool.setuptools.package-data]
+netscan = ["py.typed"]
