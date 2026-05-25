@@ -14,6 +14,7 @@ import netscan.utils.system_utils as system_utils
 from netscan.services.arp import Arp
 from netscan.services.icmp import Ping
 from netscan.services.tcp import Tcp
+from netscan.services.udp import Udp
 
 
 class Target(NamedTuple):
@@ -55,6 +56,7 @@ Examples:
     sudo netscan arp [-t TIMEOUT] [-v] [--json]
     sudo netscan ping [-t TIMEOUT] [-th THREADS] [-v] [--json]
     sudo netscan tcp [--target IP[:START-END]] [-t TIMEOUT] [-th THREADS] [-r RETRIES] [-v] [--json]
+    sudo netscan udp [--target IP[:START-END]] [-t TIMEOUT] [-th THREADS] [-r RETRIES] [-v] [--json]
         """
     )
 
@@ -78,6 +80,14 @@ Examples:
     tcp_parser.add_argument("-th", "--threads", type=int, default=20, help="Amount of threads to use")
     tcp_parser.add_argument("-r", "--retries", type=int, default=2, help="Retries per port on no response (default: 2)")
     tcp_parser.add_argument("-v", "--verbose", action="store_true", help="Verbose mode")
+
+    # UDP scan
+    udp_parser = subparsers.add_parser("udp", parents=[shared], help="Scan ports of target host with UDP packets.")
+    udp_parser.add_argument("--target", type=parse_target, default=None, help="Target in the form ip, ip:port, or ip:start-end (default: local machine, ports 1-1000)")
+    udp_parser.add_argument("-t", "--timeout", type=int, default=3, help="Timeout for port scan (default: 3)")
+    udp_parser.add_argument("-th", "--threads", type=int, default=20, help="Amount of threads to use")
+    udp_parser.add_argument("-r", "--retries", type=int, default=2, help="Retries per port on no response (default: 2)")
+    udp_parser.add_argument("-v", "--verbose", action="store_true", help="Verbose mode")
 
     return parser
 
@@ -123,7 +133,8 @@ def main() -> None:
 
         elif args.scan_method == "tcp":
             target: Target = args.target or parse_target(system_utils.get_ip_address())
-            print(f"Running TCP scan for {target.ip}:{target.port_begin}-{target.port_end} with {args.timeout}s timeout, {args.threads} {'thread' if args.threads == 1 else 'threads'}, {args.retries} retr{'y' if args.retries == 1 else 'ies'}")
+            port_range = str(target.port_begin) if target.port_begin == target.port_end else f"{target.port_begin}-{target.port_end}"
+            print(f"Running TCP scan for {target.ip}:{port_range} with {args.timeout}s timeout, {args.threads} {'thread' if args.threads == 1 else 'threads'}, {args.retries} retr{'y' if args.retries == 1 else 'ies'}")
             scanner = Tcp(
                 verbose=args.verbose,
                 timeout=args.timeout,
@@ -142,6 +153,29 @@ def main() -> None:
                 print(f"Open ports: {len(results)}\n_______________________")
                 for port in results:
                     print(f"{port.ip}:{port.port} is open")
+
+        elif args.scan_method == "udp":
+            target: Target = args.target or parse_target(system_utils.get_ip_address())
+            port_range = str(target.port_begin) if target.port_begin == target.port_end else f"{target.port_begin}-{target.port_end}"
+            print(f"Running UDP scan for {target.ip}:{port_range} with {args.timeout}s timeout, {args.threads} {'thread' if args.threads == 1 else 'threads'}, {args.retries} retr{'y' if args.retries == 1 else 'ies'}")
+            scanner = Udp(
+                verbose=args.verbose,
+                timeout=args.timeout,
+                threads=args.threads,
+                retries=args.retries,
+                ip=target.ip,
+                port_begin=target.port_begin,
+                port_end=target.port_end
+            )
+            scanner.scan()
+            results = scanner.get_results()
+
+            if args.json:
+                print(json.dumps({"host": target.ip, "ports": [p.port for p in results]}))
+            else:
+                print(f"Open|filtered ports: {len(results)}\n_______________________")
+                for port in results:
+                    print(f"{port.ip}:{port.port} is open|filtered")
 
     except KeyboardInterrupt:
         print("\nScan interrupted.")

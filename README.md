@@ -7,6 +7,7 @@
 - **ARP** — discovers all active hosts on the local subnet (cannot be blocked by firewalls)
 - **ICMP** — pings all hosts to check reachability
 - **TCP** — performs a SYN scan on a target host to find open ports
+- **UDP** — probes UDP ports; reports open (got a UDP reply) or open|filtered (no response) ports
 
 ## Requirements
 
@@ -44,7 +45,8 @@ sudo netscan <command> [options]
 | --------- | ------------- |
 | `arp` | ARP scan of the local subnet |
 | `ping` | ICMP scan of the local subnet |
-| `tcp` | TCP port scan of a target host |
+| `tcp` | TCP SYN port scan of a target host |
+| `udp` | UDP port scan of a target host |
 
 ### Examples
 
@@ -60,6 +62,9 @@ sudo netscan tcp --target 192.168.1.1:1-1024
 
 # Scan a single port
 sudo netscan tcp --target 192.168.1.1:80
+
+# UDP scan of common ports
+sudo netscan udp --target 192.168.1.1:1-1024
 ```
 
 ### Options
@@ -80,11 +85,18 @@ tcp:
   -th, --threads    Number of threads (default: 20)
   -r, --retries     Retries per port on no response (default: 2)
   -v, --verbose     Verbose scapy output
+
+udp:
+  --target          Target as ip, ip:port, or ip:start-end (default: local machine, ports 1-1000)
+  -t, --timeout     Packet timeout in seconds (default: 3)
+  -th, --threads    Number of threads (default: 20)
+  -r, --retries     Retries per port on no response (default: 2)
+  -v, --verbose     Verbose scapy output
 ```
 
 ## Roadmap
 
-- [ ] UDP scan
+- [x] UDP scan
 - [ ] TCP adaptive scan algorithm
 - [ ] OS fingerprinting
 - [ ] Wireless scan

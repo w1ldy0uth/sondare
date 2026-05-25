@@ -35,6 +35,18 @@ def get_ip_address() -> str:
     return socket.gethostbyname(socket.gethostname())
 
 
+def warm_arp_cache(ip: str) -> None:
+    """ARP-resolves ip and stores the result in Scapy's cache to avoid promiscuous mode errors."""
+    from scapy.all import ARP, Ether, srp, conf
+    iface = get_network_interface()
+    ans, _ = srp(
+        Ether(dst="ff:ff:ff:ff:ff:ff") / ARP(pdst=ip),
+        iface=iface, timeout=2, verbose=False, promisc=False
+    )
+    for _, rcv in ans:
+        conf.netcache.arp_cache[rcv.psrc] = rcv.hwsrc
+
+
 def get_subnet() -> str:
     """Returns the CIDR block of the active interface (e.g. 192.168.1.0/24)."""
     iface = get_network_interface()

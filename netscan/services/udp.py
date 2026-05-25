@@ -2,15 +2,14 @@
 # -*- coding: UTF-8 -*-
 
 import threading
-import random
 from queue import Queue
-from scapy.all import IP, TCP, sr1, sr
+from scapy.all import IP, UDP, ICMP, sr1
 from netscan.models import Port
 from netscan.utils.system_utils import warm_arp_cache
 
 
-class Tcp:
-    """Scans TCP ports on a target host using SYN packets."""
+class Udp:
+    """Scans UDP ports on a target host."""
 
     def __init__(self, verbose: bool, ip: str, port_begin: int, port_end: int, timeout: int, threads: int, retries: int) -> None:
         self.verbose = verbose
@@ -29,25 +28,29 @@ class Tcp:
         self._total = port_end - port_begin + 1
 
     def check_port(self, target_port: int) -> None:
-        """Probes a port up to retries+1 times; records it if any attempt gets a SYN-ACK."""
-        for _ in range(self.retries + 1):
-            source_port = random.randint(1025, 65534)
+        """Probes a UDP port; records it unless ICMP port-unreachable is received."""
+        for attempt in range(self.retries + 1):
             rsp = sr1(
-                IP(dst=self.ip) / TCP(sport=source_port, dport=target_port, flags="S"),
+                IP(dst=self.ip) / UDP(dport=target_port),
                 timeout=self.timeout,
                 verbose=self.verbose,
                 promisc=False
             )
 
             if rsp is None:
-                continue  # no response — retry
-
-            if rsp.haslayer(TCP):
-                if rsp.getlayer(TCP).flags == 0x12:  # SYN-ACK: open
-                    sr(IP(dst=self.ip) / TCP(sport=source_port, dport=target_port, flags="R"), timeout=1, verbose=False, promisc=False)
+                if attempt == self.retries:
                     with self._lock:
                         self.open_ports.append(Port(ip=self.ip, port=target_port))
-                return  # RST or anything else: definitive answer, stop retrying
+                continue
+
+            if rsp.haslayer(ICMP):
+                icmp = rsp.getlayer(ICMP)
+                if icmp.type == 3 and icmp.code == 3:
+                    return  # port unreachable — closed
+
+            with self._lock:
+                self.open_ports.append(Port(ip=self.ip, port=target_port))
+            return
 
     def _threader(self) -> None:
         """Worker: pulls ports from the queue and checks them."""
@@ -61,7 +64,7 @@ class Tcp:
             self.q.task_done()
 
     def scan(self) -> None:
-        """Runs the threaded SYN scan."""
+        """Runs the threaded UDP scan."""
         warm_arp_cache(self.ip)
         thread_count = min(self.threads, self._total)
         for _ in range(thread_count):
@@ -76,5 +79,5 @@ class Tcp:
         print()
 
     def get_results(self) -> list[Port]:
-        """Returns open ports discovered by scan()."""
+        """Returns open|filtered ports discovered by scan()."""
         return self.open_ports
