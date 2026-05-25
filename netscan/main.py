@@ -2,6 +2,7 @@
 # -*- coding: UTF-8 -*-
 
 import argparse
+import json
 import logging
 import re
 import sys
@@ -42,33 +43,36 @@ def parse_target(value: str) -> Target:
 
 
 def parse_args() -> argparse.ArgumentParser:
+    shared = argparse.ArgumentParser(add_help=False)
+    shared.add_argument("--json", action="store_true", help="Output results as JSON")
+
     parser = argparse.ArgumentParser(
         prog="netScan",
         description="Manage local network hosts' information.",
         formatter_class=argparse.RawTextHelpFormatter,
         epilog="""
 Examples:
-    sudo netscan arp [-t TIMEOUT] [-v]
-    sudo netscan ping [-t TIMEOUT] [-th THREADS] [-v]
-    sudo netscan tcp [--target IP[:START-END]] [-t TIMEOUT] [-th THREADS] [-r RETRIES] [-v]
+    sudo netscan arp [-t TIMEOUT] [-v] [--json]
+    sudo netscan ping [-t TIMEOUT] [-th THREADS] [-v] [--json]
+    sudo netscan tcp [--target IP[:START-END]] [-t TIMEOUT] [-th THREADS] [-r RETRIES] [-v] [--json]
         """
     )
 
     subparsers = parser.add_subparsers(title="SCAN METHODS", dest="scan_method")
 
     # ARP scan
-    arp_parser = subparsers.add_parser("arp", help="Scan local network with ARP packets.")
+    arp_parser = subparsers.add_parser("arp", parents=[shared], help="Scan local network with ARP packets.")
     arp_parser.add_argument("-v", "--verbose", action="store_true", help="Verbose mode")
     arp_parser.add_argument("-t", "--timeout", type=int, default=5, help="Timeout for scan response")
 
     # Ping scan
-    ping_parser = subparsers.add_parser("ping", help="Ping all hosts in local network with ICMP packets.")
+    ping_parser = subparsers.add_parser("ping", parents=[shared], help="Ping all hosts in local network with ICMP packets.")
     ping_parser.add_argument("-v", "--verbose", action="store_true", help="Verbose mode")
     ping_parser.add_argument("-t", "--timeout", type=int, default=5, help="Timeout for scan response")
     ping_parser.add_argument("-th", "--threads", type=int, default=100, help="Amount of threads to use")
 
     # TCP scan
-    tcp_parser = subparsers.add_parser("tcp", help="Scan ports of target host with TCP packets.")
+    tcp_parser = subparsers.add_parser("tcp", parents=[shared], help="Scan ports of target host with TCP packets.")
     tcp_parser.add_argument("--target", type=parse_target, default=None, help="Target in the form ip, ip:port, or ip:start-end (default: local machine, ports 1-1000)")
     tcp_parser.add_argument("-t", "--timeout", type=int, default=3, help="Timeout for port scan (default: 3)")
     tcp_parser.add_argument("-th", "--threads", type=int, default=20, help="Amount of threads to use")
@@ -98,17 +102,24 @@ def main() -> None:
             scanner.scan()
             results = scanner.get_results()
 
-            print("IP".ljust(15) + "MAC")
-            for host in results:
-                print(f"{host.ip.ljust(15)}{host.mac}")
+            if args.json:
+                print(json.dumps({"hosts": [{"ip": h.ip, "mac": h.mac} for h in results]}))
+            else:
+                print("IP".ljust(15) + "MAC")
+                for host in results:
+                    print(f"{host.ip.ljust(15)}{host.mac}")
 
         elif args.scan_method == "ping":
             print(f"Running ICMP scan with {args.timeout} seconds timeout and {args.threads} {'thread' if args.threads == 1 else 'threads'}")
             scanner = Ping(verbose=args.verbose, timeout=args.timeout, threads=args.threads)
             scanner.scan()
             results = scanner.get_results()
-            for host in results:
-                print(f"{host} is alive")
+
+            if args.json:
+                print(json.dumps({"hosts": results}))
+            else:
+                for host in results:
+                    print(f"{host} is alive")
 
         elif args.scan_method == "tcp":
             target: Target = args.target or parse_target(system_utils.get_ip_address())
@@ -125,9 +136,12 @@ def main() -> None:
             scanner.scan()
             results = scanner.get_results()
 
-            print(f"Open ports: {len(results)}\n_______________________")
-            for port in results:
-                print(f"{port.ip}:{port.port} is open")
+            if args.json:
+                print(json.dumps({"host": target.ip, "ports": [p.port for p in results]}))
+            else:
+                print(f"Open ports: {len(results)}\n_______________________")
+                for port in results:
+                    print(f"{port.ip}:{port.port} is open")
 
     except KeyboardInterrupt:
         print("\nScan interrupted.")
