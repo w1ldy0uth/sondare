@@ -1,11 +1,12 @@
-from unittest.mock import patch, MagicMock, call
-from netscan.services.tcp import Port
+from unittest.mock import patch, MagicMock
+from netscan.services.tcp import Tcp
+from netscan.models import Port
 
 
 def _make_scanner(**kwargs):
     defaults = dict(verbose=False, ip="10.0.0.1", port_begin=80, port_end=80, timeout=1, threads=1, retries=2)
     defaults.update(kwargs)
-    return Port(**defaults)
+    return Tcp(**defaults)
 
 
 def _tcp_response(flags: int):
@@ -29,7 +30,7 @@ class TestCheckPort:
              patch("random.randint", return_value=54321):
             scanner.check_port(80)
 
-        assert "10.0.0.1:80" in scanner.open_ports
+        assert Port(ip="10.0.0.1", port=80) in scanner.open_ports
 
     def test_syn_ack_sends_rst(self):
         scanner = _make_scanner()
@@ -39,8 +40,6 @@ class TestCheckPort:
             scanner.check_port(80)
 
         mock_sr.assert_called_once()
-        rst_pkt = mock_sr.call_args.args[0]
-        assert rst_pkt.getlayer is not None  # basic sanity
 
     def test_rst_does_not_add_port(self):
         scanner = _make_scanner()
@@ -56,7 +55,7 @@ class TestCheckPort:
              patch("netscan.services.tcp.sr"):
             scanner.check_port(80)
 
-        assert mock_sr1.call_count == 1  # returned after first RST, no retries
+        assert mock_sr1.call_count == 1
 
     def test_none_response_retries_up_to_limit(self):
         scanner = _make_scanner(retries=2)
@@ -64,7 +63,7 @@ class TestCheckPort:
              patch("netscan.services.tcp.sr"):
             scanner.check_port(80)
 
-        assert mock_sr1.call_count == 3  # initial + 2 retries
+        assert mock_sr1.call_count == 3
         assert scanner.open_ports == []
 
     def test_none_then_syn_ack_adds_port(self):
@@ -75,7 +74,7 @@ class TestCheckPort:
              patch("random.randint", return_value=54321):
             scanner.check_port(80)
 
-        assert "10.0.0.1:80" in scanner.open_ports
+        assert Port(ip="10.0.0.1", port=80) in scanner.open_ports
 
 
 class TestGetResults:
@@ -95,4 +94,4 @@ class TestGetResults:
             scanner.check_port(80)
             scanner.check_port(81)
 
-        assert set(scanner.get_results()) == {"10.0.0.1:79", "10.0.0.1:81"}
+        assert set(scanner.get_results()) == {Port("10.0.0.1", 79), Port("10.0.0.1", 81)}

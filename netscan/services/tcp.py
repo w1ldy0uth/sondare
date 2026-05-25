@@ -5,9 +5,10 @@ import threading
 import random
 from queue import Queue
 from scapy.all import IP, TCP, sr1, sr
+from netscan.models import Port
 
 
-class Port:
+class Tcp:
     """Scans TCP ports on a target host using SYN packets."""
 
     def __init__(self, verbose: bool, ip: str, port_begin: int, port_end: int, timeout: int, threads: int, retries: int) -> None:
@@ -22,7 +23,7 @@ class Port:
         self._lock = threading.Lock()
         self.q: Queue[int] = Queue()
 
-        self.open_ports: list[str] = []
+        self.open_ports: list[Port] = []
         self._done = 0
         self._total = port_end - port_begin + 1
 
@@ -44,7 +45,7 @@ class Port:
                 if rsp.getlayer(TCP).flags == 0x12:  # SYN-ACK: open
                     sr(IP(dst=self.ip) / TCP(sport=source_port, dport=target_port, flags="R"), timeout=1, verbose=False, promisc=False)
                     with self._lock:
-                        self.open_ports.append(self.ip + ":" + str(target_port))
+                        self.open_ports.append(Port(ip=self.ip, port=target_port))
                 return  # RST or anything else: definitive answer, stop retrying
 
     def _threader(self) -> None:
@@ -72,6 +73,6 @@ class Port:
         self.q.join()
         print()
 
-    def get_results(self) -> list[str]:
-        """Returns open ports as 'ip:port' strings discovered by scan()."""
+    def get_results(self) -> list[Port]:
+        """Returns open ports discovered by scan()."""
         return self.open_ports

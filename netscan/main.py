@@ -12,7 +12,7 @@ logging.getLogger("scapy.runtime").setLevel(logging.ERROR)
 import netscan.utils.system_utils as system_utils
 from netscan.services.arp import Arp
 from netscan.services.icmp import Ping
-from netscan.services.tcp import Port
+from netscan.services.tcp import Tcp
 
 
 class Target(NamedTuple):
@@ -113,7 +113,7 @@ def main() -> None:
         elif args.scan_method == "tcp":
             target: Target = args.target or parse_target(system_utils.get_ip_address())
             print(f"Running TCP scan for {target.ip}:{target.port_begin}-{target.port_end} with {args.timeout}s timeout, {args.threads} {'thread' if args.threads == 1 else 'threads'}, {args.retries} retr{'y' if args.retries == 1 else 'ies'}")
-            scanner = Port(
+            scanner = Tcp(
                 verbose=args.verbose,
                 timeout=args.timeout,
                 threads=args.threads,
@@ -127,7 +127,7 @@ def main() -> None:
 
             print(f"Open ports: {len(results)}\n_______________________")
             for port in results:
-                print(f"{port} is open")
+                print(f"{port.ip}:{port.port} is open")
 
     except KeyboardInterrupt:
         print("\nScan interrupted.")
