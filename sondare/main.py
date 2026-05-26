@@ -6,6 +6,7 @@ import json
 import logging
 import re
 import sys
+from importlib.metadata import version as _pkg_version, PackageNotFoundError
 from typing import NamedTuple
 
 logging.getLogger("scapy.runtime").setLevel(logging.ERROR)
@@ -58,13 +59,20 @@ def _fmt_port_range(begin: int, end: int) -> str:
     return str(begin) if begin == end else f"{begin}-{end}"
 
 
+def _get_version() -> str:
+    try:
+        return _pkg_version("sondare")
+    except PackageNotFoundError:
+        return "unknown"
+
+
 def parse_args() -> argparse.ArgumentParser:
     shared = argparse.ArgumentParser(add_help=False)
     shared.add_argument("--json", action="store_true", help="Output results as JSON")
 
     parser = argparse.ArgumentParser(
         prog="sondare",
-        description="Probe and monitor local network hosts.",
+        description=f"sondare {_get_version()} — Probe and monitor local network hosts.",
         formatter_class=argparse.RawTextHelpFormatter,
         epilog="""
 Examples:
@@ -85,6 +93,8 @@ Examples:
     sudo sondare graph --fingerprint                         # Network graph with OS fingerprinting
         """
     )
+
+    parser.add_argument("-V", "--version", action="version", version=f"sondare {_get_version()}")
 
     subparsers = parser.add_subparsers(title="SCAN METHODS", dest="scan_method")
 
@@ -164,12 +174,12 @@ Examples:
 
 def main() -> None:
     """Entry point: parses CLI arguments and dispatches to the appropriate scanner."""
+    parser = parse_args()
+    args = parser.parse_args()
+
     if not root.is_running_as_root():
         print("Access denied. Run this program as root.")
         sys.exit(1)
-
-    parser = parse_args()
-    args = parser.parse_args()
 
     if args.scan_method is None:
         parser.print_help()

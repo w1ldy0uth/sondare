@@ -136,12 +136,14 @@ arp:
   -t, --timeout          Packet timeout in seconds (default: 5)
   --resolve_hostname     Resolve hostnames via PTR lookup
   -v, --verbose          Verbose scapy output
+  --json                 JSON output
 
 ping:
   -t, --timeout          Packet timeout in seconds (default: 5)
   -th, --threads         Number of threads (default: 20)
   --resolve_hostname     Resolve hostnames via PTR lookup
   -v, --verbose          Verbose scapy output
+  --json                 JSON output
 
 tcp:
   --target          Target as ip, ip:port, or ip:start-end (default: local machine, ports 1-1000)
@@ -150,6 +152,7 @@ tcp:
   -r, --retries     Retries per port on no response (default: 2)
   -b, --banners     Grab service banners from open ports
   -v, --verbose     Verbose scapy output
+  --json            JSON output
 
 udp:
   --target          Target as ip, ip:port, or ip:start-end (default: local machine, ports 1-1000)
