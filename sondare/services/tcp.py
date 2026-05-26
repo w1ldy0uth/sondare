@@ -7,20 +7,23 @@ import time
 from queue import Queue
 from scapy.all import IP, TCP, sr1, sr
 from sondare.models import Port
-from sondare.utils.system_utils import warm_arp_cache
-from sondare.utils.adaptive import AdaptivePool
+from sondare.utils.banners import grab_banner
+from sondare.utils.network import warm_arp_cache
+from sondare.utils.adaptive_pool import AdaptivePool
 
 
 class Tcp:
     """Scans TCP ports on a target host using SYN packets."""
 
-    def __init__(self, verbose: bool, ip: str, port_begin: int, port_end: int, timeout: float, threads: int, retries: int) -> None:
+    def __init__(self, verbose: bool, ip: str, port_begin: int, port_end: int, timeout: float, threads: int, retries: int, banners: bool = False) -> None:
         self.verbose = verbose
         self.ip = ip
         self.threads = threads
         self.port_begin = port_begin
         self.port_end = port_end
         self.retries = retries
+        self.banners = banners
+        self._timeout = timeout
 
         self._pool = AdaptivePool(max_threads=threads, timeout=timeout, adapt_concurrency=True)
         self._lock = threading.Lock()
@@ -84,6 +87,12 @@ class Tcp:
 
         self.q.join()
         print()
+
+        if self.banners:
+            self.open_ports = [
+                Port(ip=p.ip, port=p.port, banner=grab_banner(p.ip, p.port, self._timeout))
+                for p in self.open_ports
+            ]
 
     def get_results(self) -> list[Port]:
         """Returns open ports discovered by scan()."""

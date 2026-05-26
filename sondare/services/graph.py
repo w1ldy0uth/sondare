@@ -11,7 +11,7 @@ from datetime import datetime
 from scapy.all import ARP, Ether, IP, ICMP, srp, sr1, conf
 from sondare.models import Host
 from sondare.services.fingerprint import OsFingerprinter
-from sondare.utils.system_utils import get_subnet, get_network_interface, get_ip_address
+from sondare.utils.network import get_subnet, get_network_interface, get_ip_address
 
 _HTML_TEMPLATE = """\
 <!DOCTYPE html>

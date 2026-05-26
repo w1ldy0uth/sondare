@@ -6,8 +6,8 @@ import time
 from queue import Queue
 from scapy.all import IP, UDP, ICMP, sr1
 from sondare.models import Port
-from sondare.utils.system_utils import warm_arp_cache
-from sondare.utils.adaptive import AdaptivePool
+from sondare.utils.network import warm_arp_cache
+from sondare.utils.adaptive_pool import AdaptivePool
 
 
 class Udp:

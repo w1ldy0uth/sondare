@@ -10,7 +10,8 @@ from typing import NamedTuple
 
 logging.getLogger("scapy.runtime").setLevel(logging.ERROR)
 
-import sondare.utils.system_utils as system_utils
+import sondare.utils.network as network
+import sondare.utils.root as root
 from sondare.services.arp import Arp
 from sondare.services.icmp import Ping
 from sondare.services.tcp import Tcp
@@ -91,7 +92,7 @@ Examples:
     ping_parser = subparsers.add_parser("ping", parents=[shared], help="Ping all hosts in local network with ICMP packets.")
     ping_parser.add_argument("-v", "--verbose", action="store_true", help="Verbose mode")
     ping_parser.add_argument("-t", "--timeout", type=int, default=5, help="Timeout for scan response")
-    ping_parser.add_argument("-th", "--threads", type=int, default=100, help="Amount of threads to use")
+    ping_parser.add_argument("-th", "--threads", type=int, default=20, help="Amount of threads to use")
 
     # TCP scan
     tcp_parser = subparsers.add_parser("tcp", parents=[shared], help="Scan ports of target host with TCP packets.")
@@ -99,6 +100,7 @@ Examples:
     tcp_parser.add_argument("-t", "--timeout", type=int, default=3, help="Timeout for port scan (default: 3)")
     tcp_parser.add_argument("-th", "--threads", type=int, default=20, help="Amount of threads to use")
     tcp_parser.add_argument("-r", "--retries", type=int, default=2, help="Retries per port on no response (default: 2)")
+    tcp_parser.add_argument("-b", "--banners", action="store_true", help="Grab service banners from open ports")
     tcp_parser.add_argument("-v", "--verbose", action="store_true", help="Verbose mode")
 
     # OS fingerprint
@@ -155,7 +157,7 @@ Examples:
 
 def main() -> None:
     """Entry point: parses CLI arguments and dispatches to the appropriate scanner."""
-    if not system_utils.is_running_as_root():
+    if not root.is_running_as_root():
         print("Access denied. Run this program as root.")
         sys.exit(1)
 
@@ -193,7 +195,7 @@ def main() -> None:
                     print(f"{host} is alive")
 
         elif args.scan_method == "tcp":
-            target: Target = args.target or parse_target(system_utils.get_ip_address())
+            target: Target = args.target or parse_target(network.get_ip_address())
             port_range = _fmt_port_range(target.port_begin, target.port_end)
             print(f"Running TCP scan for {target.ip}:{port_range} with {args.timeout}s timeout, {args.threads} {'thread' if args.threads == 1 else 'threads'}, {args.retries} retr{'y' if args.retries == 1 else 'ies'}")
             scanner = Tcp(
@@ -201,6 +203,7 @@ def main() -> None:
                 timeout=args.timeout,
                 threads=args.threads,
                 retries=args.retries,
+                banners=args.banners,
                 ip=target.ip,
                 port_begin=target.port_begin,
                 port_end=target.port_end
@@ -209,11 +212,16 @@ def main() -> None:
             results = scanner.get_results()
 
             if args.json:
-                print(json.dumps({"host": target.ip, "ports": [p.port for p in results]}))
+                if args.banners:
+                    ports_data = [{"port": p.port, "banner": p.banner} for p in results]
+                else:
+                    ports_data = [p.port for p in results]
+                print(json.dumps({"host": target.ip, "ports": ports_data}))
             else:
                 print(f"Open ports: {len(results)}\n_______________________")
                 for port in results:
-                    print(f"{port.ip}:{port.port} is open")
+                    suffix = f"  {port.banner}" if port.banner else ""
+                    print(f"{port.ip}:{port.port} is open{suffix}")
 
         elif args.scan_method == "os":
             port_hint = f":{args.port}" if args.port else " (auto)"
@@ -238,7 +246,7 @@ def main() -> None:
                 print(f"Window: {result.window}")
 
         elif args.scan_method == "udp":
-            target: Target = args.target or parse_target(system_utils.get_ip_address())
+            target: Target = args.target or parse_target(network.get_ip_address())
             port_range = _fmt_port_range(target.port_begin, target.port_end)
             print(f"Running UDP scan for {target.ip}:{port_range} with {args.timeout}s timeout, {args.threads} {'thread' if args.threads == 1 else 'threads'}, {args.retries} retr{'y' if args.retries == 1 else 'ies'}")
             scanner = Udp(
@@ -278,7 +286,7 @@ def main() -> None:
                 )
                 monitor.watch()
             elif args.monitor_type == "ports":
-                target: Target = args.target or parse_target(system_utils.get_ip_address())
+                target: Target = args.target or parse_target(network.get_ip_address())
                 watcher = PortWatcher(
                     verbose=args.verbose,
                     ip=target.ip,

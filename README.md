@@ -123,7 +123,7 @@ arp:
 
 ping:
   -t, --timeout     Packet timeout in seconds (default: 5)
-  -th, --threads    Number of threads (default: 100)
+  -th, --threads    Number of threads (default: 20)
   -v, --verbose     Verbose scapy output
 
 tcp:

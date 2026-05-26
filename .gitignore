@@ -142,3 +142,5 @@ cython_debug/
 
 # Virtual environments created by init scripts
 sondare_venv/
+
+sondare_graph.html

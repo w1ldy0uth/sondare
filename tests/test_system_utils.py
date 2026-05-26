@@ -1,7 +1,8 @@
 import socket
 import pytest
 from unittest.mock import patch, MagicMock
-from sondare.utils import system_utils
+import sondare.utils.network as network
+import sondare.utils.root as root
 
 
 def _make_addr(family, address, netmask="255.255.255.0"):
@@ -22,16 +23,16 @@ class TestIsRunningAsRoot:
     def test_root_on_unix(self):
         with patch("platform.system", return_value="Linux"), \
              patch("os.geteuid", return_value=0):
-            assert system_utils.is_running_as_root() is True
+            assert root.is_running_as_root() is True
 
     def test_non_root_on_unix(self):
         with patch("platform.system", return_value="Linux"), \
              patch("os.geteuid", return_value=1000):
-            assert system_utils.is_running_as_root() is False
+            assert root.is_running_as_root() is False
 
     def test_windows_always_true(self):
         with patch("platform.system", return_value="Windows"):
-            assert system_utils.is_running_as_root() is True
+            assert root.is_running_as_root() is True
 
 
 class TestGetNetworkInterface:
@@ -46,7 +47,7 @@ class TestGetNetworkInterface:
         }
         with patch("psutil.net_if_addrs", return_value=addrs), \
              patch("psutil.net_if_stats", return_value=stats):
-            assert system_utils.get_network_interface() == "eth0"
+            assert network.get_network_interface() == "eth0"
 
     def test_skips_down_interface(self):
         addrs = {
@@ -59,7 +60,7 @@ class TestGetNetworkInterface:
         }
         with patch("psutil.net_if_addrs", return_value=addrs), \
              patch("psutil.net_if_stats", return_value=stats):
-            assert system_utils.get_network_interface() == "eth1"
+            assert network.get_network_interface() == "eth1"
 
     def test_raises_when_no_valid_interface(self):
         addrs = {"lo": [_make_addr(socket.AF_INET, "127.0.0.1")]}
@@ -67,7 +68,7 @@ class TestGetNetworkInterface:
         with patch("psutil.net_if_addrs", return_value=addrs), \
              patch("psutil.net_if_stats", return_value=stats):
             with pytest.raises(RuntimeError, match="No active network interface"):
-                system_utils.get_network_interface()
+                network.get_network_interface()
 
     def test_skips_interface_without_ipv4(self):
         addrs = {
@@ -80,7 +81,7 @@ class TestGetNetworkInterface:
         }
         with patch("psutil.net_if_addrs", return_value=addrs), \
              patch("psutil.net_if_stats", return_value=stats):
-            assert system_utils.get_network_interface() == "eth1"
+            assert network.get_network_interface() == "eth1"
 
 
 class TestGetIpAddress:
@@ -89,7 +90,7 @@ class TestGetIpAddress:
         stats = {"eth0": _make_stats(isup=True)}
         with patch("psutil.net_if_addrs", return_value=addrs), \
              patch("psutil.net_if_stats", return_value=stats):
-            assert system_utils.get_ip_address() == "192.168.1.10"
+            assert network.get_ip_address() == "192.168.1.10"
 
 
 class TestGetSubnet:
@@ -98,11 +99,11 @@ class TestGetSubnet:
         stats = {"eth0": _make_stats(isup=True)}
         with patch("psutil.net_if_addrs", return_value=addrs), \
              patch("psutil.net_if_stats", return_value=stats):
-            assert system_utils.get_subnet() == "10.0.1.0/24"
+            assert network.get_subnet() == "10.0.1.0/24"
 
     def test_respects_non_slash24_netmask(self):
         addrs = {"eth0": [_make_addr(socket.AF_INET, "10.0.1.55", "255.255.0.0")]}
         stats = {"eth0": _make_stats(isup=True)}
         with patch("psutil.net_if_addrs", return_value=addrs), \
              patch("psutil.net_if_stats", return_value=stats):
-            assert system_utils.get_subnet() == "10.0.0.0/16"
+            assert network.get_subnet() == "10.0.0.0/16"

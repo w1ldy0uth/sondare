@@ -34,7 +34,7 @@ class TestArpJsonOutput:
         ]
 
         addrs, stats = _net_mocks()
-        with patch("sondare.main.system_utils.is_running_as_root", return_value=True), \
+        with patch("sondare.main.root.is_running_as_root", return_value=True), \
              patch("sondare.main.parse_args") as mock_parse_args, \
              patch("sondare.main.Arp", return_value=mock_scanner), \
              patch("psutil.net_if_addrs", return_value=addrs), \
@@ -55,7 +55,7 @@ class TestArpJsonOutput:
         mock_scanner.get_results.return_value = [Host(ip="192.168.1.2", mac="aa:bb:cc:dd:ee:01")]
 
         addrs, stats = _net_mocks()
-        with patch("sondare.main.system_utils.is_running_as_root", return_value=True), \
+        with patch("sondare.main.root.is_running_as_root", return_value=True), \
              patch("sondare.main.parse_args") as mock_parse_args, \
              patch("sondare.main.Arp", return_value=mock_scanner), \
              patch("psutil.net_if_addrs", return_value=addrs), \
@@ -76,7 +76,7 @@ class TestPingJsonOutput:
         mock_scanner.get_results.return_value = ["192.168.1.2", "192.168.1.5"]
 
         addrs, stats = _net_mocks()
-        with patch("sondare.main.system_utils.is_running_as_root", return_value=True), \
+        with patch("sondare.main.root.is_running_as_root", return_value=True), \
              patch("sondare.main.parse_args") as mock_parse_args, \
              patch("sondare.main.Ping", return_value=mock_scanner), \
              patch("psutil.net_if_addrs", return_value=addrs), \
@@ -94,7 +94,7 @@ class TestPingJsonOutput:
         mock_scanner.get_results.return_value = ["192.168.1.2"]
 
         addrs, stats = _net_mocks()
-        with patch("sondare.main.system_utils.is_running_as_root", return_value=True), \
+        with patch("sondare.main.root.is_running_as_root", return_value=True), \
              patch("sondare.main.parse_args") as mock_parse_args, \
              patch("sondare.main.Ping", return_value=mock_scanner), \
              patch("psutil.net_if_addrs", return_value=addrs), \
@@ -106,12 +106,13 @@ class TestPingJsonOutput:
 
 
 class TestTcpJsonOutput:
-    def _tcp_args(self, use_json: bool):
+    def _tcp_args(self, use_json: bool, banners: bool = False):
         from sondare.main import Target
         args = _args(
             scan_method="tcp",
             threads=1,
             retries=0,
+            banners=banners,
             target=Target("10.0.0.1", 80, 80),
             json=use_json,
         )
@@ -122,7 +123,7 @@ class TestTcpJsonOutput:
         mock_scanner = MagicMock()
         mock_scanner.get_results.return_value = [Port(ip="10.0.0.1", port=80)]
 
-        with patch("sondare.main.system_utils.is_running_as_root", return_value=True), \
+        with patch("sondare.main.root.is_running_as_root", return_value=True), \
              patch("sondare.main.parse_args") as mock_parse_args, \
              patch("sondare.main.Tcp", return_value=mock_scanner):
             mock_parse_args.return_value.parse_args.return_value = args
@@ -137,10 +138,37 @@ class TestTcpJsonOutput:
         mock_scanner = MagicMock()
         mock_scanner.get_results.return_value = [Port(ip="10.0.0.1", port=80)]
 
-        with patch("sondare.main.system_utils.is_running_as_root", return_value=True), \
+        with patch("sondare.main.root.is_running_as_root", return_value=True), \
              patch("sondare.main.parse_args") as mock_parse_args, \
              patch("sondare.main.Tcp", return_value=mock_scanner):
             mock_parse_args.return_value.parse_args.return_value = args
             main()
 
         assert "10.0.0.1:80 is open" in capsys.readouterr().out
+
+    def test_banners_flag_appends_banner_to_output(self, capsys):
+        args = self._tcp_args(use_json=False, banners=True)
+        mock_scanner = MagicMock()
+        mock_scanner.get_results.return_value = [Port(ip="10.0.0.1", port=22, banner="SSH-2.0-OpenSSH_8.9")]
+
+        with patch("sondare.main.root.is_running_as_root", return_value=True), \
+             patch("sondare.main.parse_args") as mock_parse_args, \
+             patch("sondare.main.Tcp", return_value=mock_scanner):
+            mock_parse_args.return_value.parse_args.return_value = args
+            main()
+
+        assert "10.0.0.1:22 is open  SSH-2.0-OpenSSH_8.9" in capsys.readouterr().out
+
+    def test_banners_flag_json_includes_banner_field(self, capsys):
+        args = self._tcp_args(use_json=True, banners=True)
+        mock_scanner = MagicMock()
+        mock_scanner.get_results.return_value = [Port(ip="10.0.0.1", port=22, banner="SSH-2.0-OpenSSH_8.9")]
+
+        with patch("sondare.main.root.is_running_as_root", return_value=True), \
+             patch("sondare.main.parse_args") as mock_parse_args, \
+             patch("sondare.main.Tcp", return_value=mock_scanner):
+            mock_parse_args.return_value.parse_args.return_value = args
+            main()
+
+        parsed = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+        assert parsed == {"host": "10.0.0.1", "ports": [{"port": 22, "banner": "SSH-2.0-OpenSSH_8.9"}]}

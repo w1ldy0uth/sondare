@@ -1,5 +1,5 @@
 import threading
-from sondare.utils.adaptive import _AdaptiveSemaphore, AdaptivePool, _WINDOW_SIZE
+from sondare.utils.adaptive_pool import _AdaptiveSemaphore, AdaptivePool, _WINDOW_SIZE
 
 
 class TestAdaptiveSemaphore:

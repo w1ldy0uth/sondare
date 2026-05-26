@@ -11,6 +11,7 @@ class Port(NamedTuple):
     """An open TCP port on a scanned host."""
     ip: str
     port: int
+    banner: str | None = None
 
 
 class Fingerprint(NamedTuple):
