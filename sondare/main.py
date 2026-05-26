@@ -69,6 +69,7 @@ def _get_version() -> str:
 def parse_args() -> argparse.ArgumentParser:
     shared = argparse.ArgumentParser(add_help=False)
     shared.add_argument("--json", action="store_true", help="Output results as JSON")
+    shared.add_argument("-v", "--verbose", action="store_true", help="Verbose mode")
 
     parser = argparse.ArgumentParser(
         prog="sondare",
@@ -100,13 +101,11 @@ Examples:
 
     # ARP scan
     arp_parser = subparsers.add_parser("arp", parents=[shared], help="Scan local network with ARP packets.")
-    arp_parser.add_argument("-v", "--verbose", action="store_true", help="Verbose mode")
     arp_parser.add_argument("-t", "--timeout", type=int, default=5, help="Timeout for scan response")
     arp_parser.add_argument("--resolve_hostname", action="store_true", help="Resolve hostnames via PTR lookup")
 
     # Ping scan
     ping_parser = subparsers.add_parser("ping", parents=[shared], help="Ping all hosts in local network with ICMP packets.")
-    ping_parser.add_argument("-v", "--verbose", action="store_true", help="Verbose mode")
     ping_parser.add_argument("-t", "--timeout", type=int, default=5, help="Timeout for scan response")
     ping_parser.add_argument("-th", "--threads", type=int, default=20, help="Amount of threads to use")
     ping_parser.add_argument("--resolve_hostname", action="store_true", help="Resolve hostnames via PTR lookup")
@@ -118,14 +117,12 @@ Examples:
     tcp_parser.add_argument("-th", "--threads", type=int, default=20, help="Amount of threads to use")
     tcp_parser.add_argument("-r", "--retries", type=int, default=2, help="Retries per port on no response (default: 2)")
     tcp_parser.add_argument("-b", "--banners", action="store_true", help="Grab service banners from open ports")
-    tcp_parser.add_argument("-v", "--verbose", action="store_true", help="Verbose mode")
 
     # OS fingerprint
     os_parser = subparsers.add_parser("os", parents=[shared], help="Guess the OS of a target host via TCP SYN-ACK analysis.")
     os_parser.add_argument("--target", required=True, help="Target IP address")
     os_parser.add_argument("--port", type=int, default=None, help="Port to probe (default: auto-tries common ports)")
     os_parser.add_argument("-t", "--timeout", type=int, default=3, help="Timeout per probe in seconds (default: 3)")
-    os_parser.add_argument("-v", "--verbose", action="store_true", help="Verbose mode")
 
     # UDP scan
     udp_parser = subparsers.add_parser("udp", parents=[shared], help="Scan ports of target host with UDP packets.")
@@ -133,41 +130,35 @@ Examples:
     udp_parser.add_argument("-t", "--timeout", type=int, default=3, help="Timeout for port scan (default: 3)")
     udp_parser.add_argument("-th", "--threads", type=int, default=20, help="Amount of threads to use")
     udp_parser.add_argument("-r", "--retries", type=int, default=2, help="Retries per port on no response (default: 2)")
-    udp_parser.add_argument("-v", "--verbose", action="store_true", help="Verbose mode")
 
     # Monitor commands
     monitor_parser = subparsers.add_parser("monitor", help="Real-time network monitors.")
     monitor_sub = monitor_parser.add_subparsers(title="MONITOR TYPES", dest="monitor_type")
 
-    arp_watch_parser = monitor_sub.add_parser("arp", help="Watch for ARP traffic and report new hosts or MAC changes.")
+    arp_watch_parser = monitor_sub.add_parser("arp", parents=[shared], help="Watch for ARP traffic and report new hosts or MAC changes.")
     arp_watch_parser.add_argument("-t", "--timeout", type=int, default=5, help="Timeout for initial ARP seed scan (default: 5)")
-    arp_watch_parser.add_argument("-v", "--verbose", action="store_true", help="Verbose mode")
 
-    updown_parser = monitor_sub.add_parser("hosts", help="Periodically ping hosts and report up/down state changes.")
+    updown_parser = monitor_sub.add_parser("hosts", parents=[shared], help="Periodically ping hosts and report up/down state changes.")
     updown_parser.add_argument("--hosts", nargs="+", metavar="IP", default=None, help="Hosts to monitor (default: discover via ARP scan)")
     updown_parser.add_argument("-i", "--interval", type=int, default=30, help="Seconds between ping rounds (default: 30)")
     updown_parser.add_argument("-t", "--timeout", type=float, default=2.0, help="Ping timeout in seconds (default: 2)")
     updown_parser.add_argument("-th", "--threads", type=int, default=50, help="Concurrent pings per round (default: 50)")
-    updown_parser.add_argument("-v", "--verbose", action="store_true", help="Verbose mode")
 
-    ports_parser = monitor_sub.add_parser("ports", help="Periodically SYN-scan a target and report port state changes.")
+    ports_parser = monitor_sub.add_parser("ports", parents=[shared], help="Periodically SYN-scan a target and report port state changes.")
     ports_parser.add_argument("--target", type=parse_target, default=None, help="Target as ip, ip:port, or ip:start-end (default: local machine, ports 1-1000)")
     ports_parser.add_argument("-i", "--interval", type=int, default=60, help="Seconds between scans (default: 60)")
     ports_parser.add_argument("-t", "--timeout", type=float, default=3.0, help="Timeout per probe in seconds (default: 3)")
     ports_parser.add_argument("-th", "--threads", type=int, default=20, help="Concurrent probes per scan (default: 20)")
-    ports_parser.add_argument("-v", "--verbose", action="store_true", help="Verbose mode")
 
-    traffic_parser = monitor_sub.add_parser("traffic", help="Live packet capture with per-packet protocol breakdown.")
+    traffic_parser = monitor_sub.add_parser("traffic", parents=[shared], help="Live packet capture with per-packet protocol breakdown.")
     traffic_parser.add_argument("--filter", metavar="BPF", default=None, help="BPF filter expression (e.g. 'tcp', 'udp port 53', 'host 192.168.1.1')")
-    traffic_parser.add_argument("-v", "--verbose", action="store_true", help="Verbose mode")
 
     # Graph
-    graph_parser = subparsers.add_parser("graph", help="Generate an interactive HTML network graph.")
+    graph_parser = subparsers.add_parser("graph", parents=[shared], help="Generate an interactive HTML network graph.")
     graph_parser.add_argument("-t", "--timeout", type=float, default=3.0, help="ARP scan timeout in seconds (default: 3)")
     graph_parser.add_argument("-th", "--threads", type=int, default=10, help="Concurrent fingerprint probes (default: 10)")
     graph_parser.add_argument("--fingerprint", action="store_true", help="OS-fingerprint each discovered host")
     graph_parser.add_argument("-o", "--output", default="sondare_graph.html", help="Output file path (default: sondare_graph.html)")
-    graph_parser.add_argument("-v", "--verbose", action="store_true", help="Verbose mode")
 
     return parser
 
