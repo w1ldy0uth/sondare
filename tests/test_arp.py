@@ -58,3 +58,24 @@ def test_scan_with_no_responses_returns_empty(net_mocks):
         scanner.scan()
 
     assert scanner.get_results() == []
+
+
+def test_resolve_hostname_populates_hostname_field(net_mocks):
+    rcv1, rcv2 = MagicMock(), MagicMock()
+    rcv1.psrc, rcv1.hwsrc = "192.168.1.2", "aa:bb:cc:dd:ee:01"
+    rcv2.psrc, rcv2.hwsrc = "192.168.1.3", "aa:bb:cc:dd:ee:02"
+
+    addrs, stats = net_mocks()
+    with patch("psutil.net_if_addrs", return_value=addrs), \
+         patch("psutil.net_if_stats", return_value=stats), \
+         patch("sondare.services.arp.srp", return_value=([(None, rcv1), (None, rcv2)], None)), \
+         patch("sondare.services.arp.resolve_hostnames", return_value={
+             "192.168.1.2": "router.local",
+             "192.168.1.3": None,
+         }), \
+         patch("builtins.print"):
+        scanner = Arp(verbose=False, timeout=1, resolve_hostname=True)
+        scanner.scan()
+        results = scanner.get_results()
+    assert results[0] == Host(ip="192.168.1.2", mac="aa:bb:cc:dd:ee:01", hostname="router.local")
+    assert results[1] == Host(ip="192.168.1.3", mac="aa:bb:cc:dd:ee:02", hostname=None)

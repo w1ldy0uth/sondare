@@ -12,9 +12,10 @@
 
 - **ARP** — discovers all active hosts on the local subnet (cannot be blocked by firewalls)
 - **ICMP** — pings all hosts to check reachability
-- **TCP** — performs a SYN scan on a target host to find open ports
+- **TCP** — performs a SYN scan on a target host to find open ports; optionally grabs service banners
 - **UDP** — probes UDP ports; reports open (got a UDP reply) or open|filtered (no response) ports
 - **OS fingerprinting** — guesses the OS of a host by analysing TTL and TCP window size in a SYN-ACK response
+- **Hostname resolution** — resolves PTR records for discovered hosts (requires reverse DNS on the network)
 
 ## Requirements
 
@@ -68,14 +69,23 @@ sudo sondare <command> [options]
 # Discover all hosts via ARP
 sudo sondare arp
 
+# Discover hosts and resolve their hostnames (requires PTR records on the network)
+sudo sondare arp --resolve_hostname
+
 # Discover live hosts via ICMP with 10s timeout
 sudo sondare ping -t 10
+
+# Ping scan with hostname resolution
+sudo sondare ping --resolve_hostname
 
 # Scan ports 1–1024 on a target
 sudo sondare tcp --target 192.168.1.1:1-1024
 
 # Scan a single port
 sudo sondare tcp --target 192.168.1.1:80
+
+# Grab service banners from open ports
+sudo sondare tcp --target 192.168.1.1:1-1024 --banners
 
 # UDP scan of common ports
 sudo sondare udp --target 192.168.1.1:1-1024
@@ -112,25 +122,33 @@ sudo sondare graph --fingerprint
 
 # Save to a custom path
 sudo sondare graph -o /tmp/my_network.html
+
+# Output results as JSON (supported by all scan commands)
+sudo sondare arp --json
+sudo sondare ping --json
+sudo sondare tcp --target 192.168.1.1:1-1024 --banners --json
 ```
 
 ### Options
 
 ```bash
 arp:
-  -t, --timeout     Packet timeout in seconds (default: 5)
-  -v, --verbose     Verbose scapy output
+  -t, --timeout          Packet timeout in seconds (default: 5)
+  --resolve_hostname     Resolve hostnames via PTR lookup
+  -v, --verbose          Verbose scapy output
 
 ping:
-  -t, --timeout     Packet timeout in seconds (default: 5)
-  -th, --threads    Number of threads (default: 20)
-  -v, --verbose     Verbose scapy output
+  -t, --timeout          Packet timeout in seconds (default: 5)
+  -th, --threads         Number of threads (default: 20)
+  --resolve_hostname     Resolve hostnames via PTR lookup
+  -v, --verbose          Verbose scapy output
 
 tcp:
   --target          Target as ip, ip:port, or ip:start-end (default: local machine, ports 1-1000)
   -t, --timeout     Packet timeout in seconds (default: 3)
   -th, --threads    Number of threads (default: 20)
   -r, --retries     Retries per port on no response (default: 2)
+  -b, --banners     Grab service banners from open ports
   -v, --verbose     Verbose scapy output
 
 udp:

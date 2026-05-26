@@ -26,7 +26,7 @@ def _net_mocks():
 
 class TestArpJsonOutput:
     def test_json_flag_prints_json(self, capsys):
-        args = _args(scan_method="arp", json=True)
+        args = _args(scan_method="arp", json=True, resolve_hostname=False)
         mock_scanner = MagicMock()
         mock_scanner.get_results.return_value = [
             Host(ip="192.168.1.2", mac="aa:bb:cc:dd:ee:01"),
@@ -50,7 +50,7 @@ class TestArpJsonOutput:
         ]}
 
     def test_no_json_flag_prints_table(self, capsys):
-        args = _args(scan_method="arp", json=False)
+        args = _args(scan_method="arp", json=False, resolve_hostname=False)
         mock_scanner = MagicMock()
         mock_scanner.get_results.return_value = [Host(ip="192.168.1.2", mac="aa:bb:cc:dd:ee:01")]
 
@@ -68,10 +68,29 @@ class TestArpJsonOutput:
         assert "aa:bb:cc:dd:ee:01" in output
         assert output.strip().splitlines()[-1] != "["  # not JSON
 
+    def test_resolve_hostname_includes_hostname_in_json(self, capsys):
+        args = _args(scan_method="arp", json=True, resolve_hostname=True)
+        mock_scanner = MagicMock()
+        mock_scanner.get_results.return_value = [
+            Host(ip="192.168.1.2", mac="aa:bb:cc:dd:ee:01", hostname="router.local"),
+        ]
+
+        addrs, stats = _net_mocks()
+        with patch("sondare.main.root.is_running_as_root", return_value=True), \
+             patch("sondare.main.parse_args") as mock_parse_args, \
+             patch("sondare.main.Arp", return_value=mock_scanner), \
+             patch("psutil.net_if_addrs", return_value=addrs), \
+             patch("psutil.net_if_stats", return_value=stats):
+            mock_parse_args.return_value.parse_args.return_value = args
+            main()
+
+        parsed = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+        assert parsed == {"hosts": [{"ip": "192.168.1.2", "mac": "aa:bb:cc:dd:ee:01", "hostname": "router.local"}]}
+
 
 class TestPingJsonOutput:
     def test_json_flag_prints_json(self, capsys):
-        args = _args(scan_method="ping", threads=1, json=True)
+        args = _args(scan_method="ping", threads=1, json=True, resolve_hostname=False)
         mock_scanner = MagicMock()
         mock_scanner.get_results.return_value = ["192.168.1.2", "192.168.1.5"]
 
@@ -89,7 +108,7 @@ class TestPingJsonOutput:
         assert parsed == {"hosts": ["192.168.1.2", "192.168.1.5"]}
 
     def test_no_json_flag_prints_alive(self, capsys):
-        args = _args(scan_method="ping", threads=1, json=False)
+        args = _args(scan_method="ping", threads=1, json=False, resolve_hostname=False)
         mock_scanner = MagicMock()
         mock_scanner.get_results.return_value = ["192.168.1.2"]
 

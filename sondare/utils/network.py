@@ -1,6 +1,21 @@
 import ipaddress
 import socket
 import psutil
+from concurrent.futures import ThreadPoolExecutor
+
+
+def resolve_hostname(ip: str) -> str | None:
+    """Returns the PTR hostname for an IP, or None if not found."""
+    try:
+        return socket.gethostbyaddr(ip)[0]
+    except (socket.herror, socket.gaierror, OSError):
+        return None
+
+
+def resolve_hostnames(ips: list[str]) -> dict[str, str | None]:
+    """Resolves PTR records for a list of IPs concurrently. Returns {ip: hostname}."""
+    with ThreadPoolExecutor(max_workers=min(len(ips), 20)) as pool:
+        return dict(zip(ips, pool.map(resolve_hostname, ips)))
 
 
 def get_network_interface() -> str:

@@ -68,16 +68,21 @@ def parse_args() -> argparse.ArgumentParser:
         formatter_class=argparse.RawTextHelpFormatter,
         epilog="""
 Examples:
-    sudo sondare arp [-t TIMEOUT] [-v] [--json]
-    sudo sondare ping [-t TIMEOUT] [-th THREADS] [-v] [--json]
-    sudo sondare tcp [--target IP[:START-END]] [-t TIMEOUT] [-th THREADS] [-r RETRIES] [-v] [--json]
-    sudo sondare udp [--target IP[:START-END]] [-t TIMEOUT] [-th THREADS] [-r RETRIES] [-v] [--json]
-    sudo sondare os --target IP [--port PORT] [-t TIMEOUT] [-v] [--json]
-    sudo sondare monitor arp [-t TIMEOUT] [-v]
-    sudo sondare monitor hosts [--hosts IP [IP ...]] [-i INTERVAL] [-t TIMEOUT] [-th THREADS] [-v]
-    sudo sondare monitor ports [--target IP[:START-END]] [-i INTERVAL] [-t TIMEOUT] [-th THREADS] [-v]
-    sudo sondare monitor traffic [--filter BPF] [-v]
-    sudo sondare graph [-t TIMEOUT] [-th THREADS] [--fingerprint] [-o FILE] [-v]
+    sudo sondare arp                                         # ARP scan
+    sudo sondare arp --resolve_hostname                      # ARP scan with hostname resolution
+    sudo sondare arp --json                                  # ARP scan, JSON output
+    sudo sondare ping                                        # ICMP scan
+    sudo sondare ping --resolve_hostname                     # ICMP scan with hostname resolution
+    sudo sondare tcp --target 192.168.1.1:1-1024             # TCP port scan
+    sudo sondare tcp --target 192.168.1.1:1-1024 --banners   # TCP scan with service banners
+    sudo sondare tcp --target 192.168.1.1:1-1024 --json      # TCP scan, JSON output
+    sudo sondare udp --target 192.168.1.1:1-1024             # UDP port scan
+    sudo sondare os --target 192.168.1.1                     # OS fingerprint
+    sudo sondare monitor arp                                 # Watch for new hosts / MAC changes
+    sudo sondare monitor hosts                               # Host up/down monitor (auto-discovers)
+    sudo sondare monitor ports --target 192.168.1.1:1-1024   # Port state monitor
+    sudo sondare monitor traffic --filter "udp port 53"      # Live packet capture
+    sudo sondare graph --fingerprint                         # Network graph with OS fingerprinting
         """
     )
 
@@ -87,12 +92,14 @@ Examples:
     arp_parser = subparsers.add_parser("arp", parents=[shared], help="Scan local network with ARP packets.")
     arp_parser.add_argument("-v", "--verbose", action="store_true", help="Verbose mode")
     arp_parser.add_argument("-t", "--timeout", type=int, default=5, help="Timeout for scan response")
+    arp_parser.add_argument("--resolve_hostname", action="store_true", help="Resolve hostnames via PTR lookup")
 
     # Ping scan
     ping_parser = subparsers.add_parser("ping", parents=[shared], help="Ping all hosts in local network with ICMP packets.")
     ping_parser.add_argument("-v", "--verbose", action="store_true", help="Verbose mode")
     ping_parser.add_argument("-t", "--timeout", type=int, default=5, help="Timeout for scan response")
     ping_parser.add_argument("-th", "--threads", type=int, default=20, help="Amount of threads to use")
+    ping_parser.add_argument("--resolve_hostname", action="store_true", help="Resolve hostnames via PTR lookup")
 
     # TCP scan
     tcp_parser = subparsers.add_parser("tcp", parents=[shared], help="Scan ports of target host with TCP packets.")
@@ -171,28 +178,42 @@ def main() -> None:
     try:
         if args.scan_method == "arp":
             print(f"Running ARP scan with {args.timeout} seconds timeout")
-            scanner = Arp(verbose=args.verbose, timeout=args.timeout)
+            scanner = Arp(verbose=args.verbose, timeout=args.timeout, resolve_hostname=args.resolve_hostname)
             scanner.scan()
             results = scanner.get_results()
 
             if args.json:
-                print(json.dumps({"hosts": [{"ip": h.ip, "mac": h.mac} for h in results]}))
+                print(json.dumps({"hosts": [
+                    {"ip": h.ip, "mac": h.mac, **({"hostname": h.hostname} if args.resolve_hostname else {})}
+                    for h in results
+                ]}))
             else:
-                print("IP".ljust(15) + "MAC")
-                for host in results:
-                    print(f"{host.ip.ljust(15)}{host.mac}")
+                if args.resolve_hostname:
+                    print("IP".ljust(15) + "HOSTNAME".ljust(30) + "MAC")
+                    for h in results:
+                        print(f"{h.ip.ljust(15)}{(h.hostname or '').ljust(30)}{h.mac}")
+                else:
+                    print("IP".ljust(15) + "MAC")
+                    for h in results:
+                        print(f"{h.ip.ljust(15)}{h.mac}")
 
         elif args.scan_method == "ping":
             print(f"Running ICMP scan with {args.timeout} seconds timeout and {args.threads} {'thread' if args.threads == 1 else 'threads'}")
-            scanner = Ping(verbose=args.verbose, timeout=args.timeout, threads=args.threads)
+            scanner = Ping(verbose=args.verbose, timeout=args.timeout, threads=args.threads, resolve_hostname=args.resolve_hostname)
             scanner.scan()
             results = scanner.get_results()
 
             if args.json:
-                print(json.dumps({"hosts": results}))
+                if args.resolve_hostname:
+                    hostnames = scanner.get_hostnames()
+                    print(json.dumps({"hosts": [{"ip": ip, "hostname": hostnames[ip]} for ip in results]}))
+                else:
+                    print(json.dumps({"hosts": results}))
             else:
-                for host in results:
-                    print(f"{host} is alive")
+                hostnames = scanner.get_hostnames() if args.resolve_hostname else {}
+                for ip in results:
+                    suffix = f" ({hostnames[ip]})" if hostnames.get(ip) else ""
+                    print(f"{ip}{suffix} is alive")
 
         elif args.scan_method == "tcp":
             target: Target = args.target or parse_target(network.get_ip_address())

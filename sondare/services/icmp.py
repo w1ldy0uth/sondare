@@ -6,16 +6,17 @@ import threading
 import time
 from queue import Queue
 from scapy.all import IP, ICMP, sr1
-from sondare.utils.network import get_subnet
+from sondare.utils.network import get_subnet, resolve_hostnames
 from sondare.utils.adaptive_pool import AdaptivePool
 
 
 class Ping:
     """Discovers live hosts on the local network via ICMP echo."""
 
-    def __init__(self, verbose: bool, timeout: float, threads: int) -> None:
+    def __init__(self, verbose: bool, timeout: float, threads: int, resolve_hostname: bool = False) -> None:
         self.verbose = verbose
         self.threads = threads
+        self._resolve_hostname = resolve_hostname
 
         self._pool = AdaptivePool(max_threads=threads, timeout=timeout)
         self._lock = threading.Lock()
@@ -23,6 +24,7 @@ class Ping:
 
         self.hosts = [str(ip) for ip in ipaddress.IPv4Network(get_subnet()).hosts()]
         self.results: list[str] = []
+        self._hostnames: dict[str, str | None] = {}
         self._done = 0
         self._total = len(self.hosts)
 
@@ -71,6 +73,13 @@ class Ping:
         self.q.join()
         print()
 
+        if self._resolve_hostname:
+            self._hostnames = resolve_hostnames(self.results)
+
     def get_results(self) -> list[str]:
         """Returns IPs of live hosts discovered by scan()."""
         return self.results
+
+    def get_hostnames(self) -> dict[str, str | None]:
+        """Returns {ip: hostname} for resolved hosts. Empty if resolve_hostname was False."""
+        return self._hostnames

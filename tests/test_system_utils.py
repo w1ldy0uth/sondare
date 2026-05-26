@@ -107,3 +107,39 @@ class TestGetSubnet:
         with patch("psutil.net_if_addrs", return_value=addrs), \
              patch("psutil.net_if_stats", return_value=stats):
             assert network.get_subnet() == "10.0.0.0/16"
+
+
+class TestResolveHostname:
+    def test_returns_hostname_on_success(self):
+        with patch("sondare.utils.network.socket.gethostbyaddr", return_value=("router.local", [], ["192.168.1.1"])):
+            assert network.resolve_hostname("192.168.1.1") == "router.local"
+
+    def test_returns_none_on_herror(self):
+        with patch("sondare.utils.network.socket.gethostbyaddr", side_effect=socket.herror):
+            assert network.resolve_hostname("192.168.1.99") is None
+
+    def test_returns_none_on_gaierror(self):
+        with patch("sondare.utils.network.socket.gethostbyaddr", side_effect=socket.gaierror):
+            assert network.resolve_hostname("10.0.0.1") is None
+
+
+class TestResolveHostnames:
+    def test_returns_dict_of_ip_to_hostname(self):
+        def _fake_gethostbyaddr(ip):
+            return (f"host-{ip.split('.')[-1]}.local", [], [ip])
+
+        with patch("sondare.utils.network.socket.gethostbyaddr", side_effect=_fake_gethostbyaddr):
+            result = network.resolve_hostnames(["192.168.1.1", "192.168.1.2"])
+
+        assert result == {"192.168.1.1": "host-1.local", "192.168.1.2": "host-2.local"}
+
+    def test_handles_partial_failures(self):
+        def _fake(ip):
+            if ip == "192.168.1.1":
+                return ("router.local", [], [ip])
+            raise socket.herror
+
+        with patch("sondare.utils.network.socket.gethostbyaddr", side_effect=_fake):
+            result = network.resolve_hostnames(["192.168.1.1", "192.168.1.2"])
+
+        assert result == {"192.168.1.1": "router.local", "192.168.1.2": None}
