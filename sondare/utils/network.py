@@ -133,6 +133,14 @@ def _netbios_name(ip: str, timeout: float = 1.0) -> str | None:
         sock.close()
 
 
+def get_port_service(port: int, proto: str = "tcp") -> str | None:
+    """Returns the well-known service name for a port/protocol, or None."""
+    try:
+        return socket.getservbyport(port, proto)
+    except OSError:
+        return None
+
+
 def get_mac_vendor(mac: str) -> str | None:
     """Returns the full OUI vendor name for a MAC address, or None if unknown."""
     try:

@@ -238,16 +238,21 @@ def main() -> None:
             results = scanner.get_results()
 
             if args.json:
-                if args.banners:
-                    ports_data = [{"port": p.port, "banner": p.banner} for p in results]
-                else:
-                    ports_data = [p.port for p in results]
+                ports_data = [
+                    {
+                        "port": p.port,
+                        **({"service": p.service} if p.service else {}),
+                        **({"banner": p.banner} if p.banner else {}),
+                    }
+                    for p in results
+                ]
                 print(json.dumps({"host": target.ip, "ports": ports_data}))
             else:
                 print(f"Open ports: {len(results)}\n_______________________")
                 for port in results:
+                    label = f"{port.ip}:{port.port}/{port.service}" if port.service else f"{port.ip}:{port.port}"
                     suffix = f"  {port.banner}" if port.banner else ""
-                    print(f"{port.ip}:{port.port} is open{suffix}")
+                    print(f"{label} is open{suffix}")
 
         elif args.scan_method == "os":
             port_hint = f":{args.port}" if args.port else " (auto)"

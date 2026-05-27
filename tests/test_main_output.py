@@ -140,7 +140,7 @@ class TestTcpJsonOutput:
     def test_json_flag_prints_json(self, capsys):
         args = self._tcp_args(use_json=True)
         mock_scanner = MagicMock()
-        mock_scanner.get_results.return_value = [Port(ip="10.0.0.1", port=80)]
+        mock_scanner.get_results.return_value = [Port(ip="10.0.0.1", port=80, service="http")]
 
         with patch("sondare.main.root.is_running_as_root", return_value=True), \
              patch("sondare.main.parse_args") as mock_parse_args, \
@@ -150,12 +150,12 @@ class TestTcpJsonOutput:
 
         output = capsys.readouterr().out
         parsed = json.loads(output.strip().splitlines()[-1])
-        assert parsed == {"host": "10.0.0.1", "ports": [80]}
+        assert parsed == {"host": "10.0.0.1", "ports": [{"port": 80, "service": "http"}]}
 
     def test_no_json_flag_prints_open(self, capsys):
         args = self._tcp_args(use_json=False)
         mock_scanner = MagicMock()
-        mock_scanner.get_results.return_value = [Port(ip="10.0.0.1", port=80)]
+        mock_scanner.get_results.return_value = [Port(ip="10.0.0.1", port=80, service="http")]
 
         with patch("sondare.main.root.is_running_as_root", return_value=True), \
              patch("sondare.main.parse_args") as mock_parse_args, \
@@ -163,12 +163,12 @@ class TestTcpJsonOutput:
             mock_parse_args.return_value.parse_args.return_value = args
             main()
 
-        assert "10.0.0.1:80 is open" in capsys.readouterr().out
+        assert "10.0.0.1:80/http is open" in capsys.readouterr().out
 
     def test_banners_flag_appends_banner_to_output(self, capsys):
         args = self._tcp_args(use_json=False, banners=True)
         mock_scanner = MagicMock()
-        mock_scanner.get_results.return_value = [Port(ip="10.0.0.1", port=22, banner="SSH-2.0-OpenSSH_8.9")]
+        mock_scanner.get_results.return_value = [Port(ip="10.0.0.1", port=22, banner="SSH-2.0-OpenSSH_8.9", service="ssh")]
 
         with patch("sondare.main.root.is_running_as_root", return_value=True), \
              patch("sondare.main.parse_args") as mock_parse_args, \
@@ -176,12 +176,12 @@ class TestTcpJsonOutput:
             mock_parse_args.return_value.parse_args.return_value = args
             main()
 
-        assert "10.0.0.1:22 is open  SSH-2.0-OpenSSH_8.9" in capsys.readouterr().out
+        assert "10.0.0.1:22/ssh is open  SSH-2.0-OpenSSH_8.9" in capsys.readouterr().out
 
     def test_banners_flag_json_includes_banner_field(self, capsys):
         args = self._tcp_args(use_json=True, banners=True)
         mock_scanner = MagicMock()
-        mock_scanner.get_results.return_value = [Port(ip="10.0.0.1", port=22, banner="SSH-2.0-OpenSSH_8.9")]
+        mock_scanner.get_results.return_value = [Port(ip="10.0.0.1", port=22, banner="SSH-2.0-OpenSSH_8.9", service="ssh")]
 
         with patch("sondare.main.root.is_running_as_root", return_value=True), \
              patch("sondare.main.parse_args") as mock_parse_args, \
@@ -190,4 +190,4 @@ class TestTcpJsonOutput:
             main()
 
         parsed = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
-        assert parsed == {"host": "10.0.0.1", "ports": [{"port": 22, "banner": "SSH-2.0-OpenSSH_8.9"}]}
+        assert parsed == {"host": "10.0.0.1", "ports": [{"port": 22, "service": "ssh", "banner": "SSH-2.0-OpenSSH_8.9"}]}

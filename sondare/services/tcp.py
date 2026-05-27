@@ -8,7 +8,7 @@ from queue import Queue
 from scapy.all import IP, TCP, sr1, sr
 from sondare.models import Port
 from sondare.utils.banners import grab_banner
-from sondare.utils.network import warm_arp_cache
+from sondare.utils.network import warm_arp_cache, get_port_service
 from sondare.utils.adaptive_pool import AdaptivePool
 
 
@@ -96,4 +96,4 @@ class Tcp:
 
     def get_results(self) -> list[Port]:
         """Returns open ports discovered by scan()."""
-        return self.open_ports
+        return [Port(ip=p.ip, port=p.port, banner=p.banner, service=get_port_service(p.port)) for p in self.open_ports]

@@ -14,6 +14,7 @@ class Port(NamedTuple):
     ip: str
     port: int
     banner: str | None = None
+    service: str | None = None
 
 
 class Fingerprint(NamedTuple):

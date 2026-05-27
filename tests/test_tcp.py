@@ -95,7 +95,7 @@ class TestGetResults:
             scanner.check_port(80)
             scanner.check_port(81)
 
-        assert set(scanner.get_results()) == {Port("10.0.0.1", 79), Port("10.0.0.1", 81)}
+        assert set(scanner.get_results()) == {Port("10.0.0.1", 79, service="finger"), Port("10.0.0.1", 81, service="hosts2-ns")}
 
 
 class TestGrabBanner:
