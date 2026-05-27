@@ -199,7 +199,7 @@ def main() -> None:
                         print(f"{h.ip.ljust(15)}{h.mac}")
 
         elif args.scan_method == "ping":
-            print(f"Running ICMP scan with {args.timeout} seconds timeout and {args.threads} {'thread' if args.threads == 1 else 'threads'}")
+            print(f"Running ICMP scan on {network.get_network_interface()} with {args.timeout} seconds timeout and {args.threads} {'thread' if args.threads == 1 else 'threads'}")
             scanner = Ping(verbose=args.verbose, timeout=args.timeout, threads=args.threads, resolve_hostname=args.resolve_hostname)
             scanner.scan()
             results = scanner.get_results()

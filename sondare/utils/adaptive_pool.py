@@ -77,8 +77,15 @@ class AdaptivePool:
                 self._timeouts += 1
             elif rtt is not None:
                 self._rtts.append(rtt)
+                if len(self._rtts) == 1:
+                    self._update_timeout()
             if self._total >= _WINDOW_SIZE:
                 self._adapt()
+
+    def _update_timeout(self) -> None:
+        if self._rtts:
+            avg_rtt = sum(self._rtts) / len(self._rtts)
+            self.timeout = max(_MIN_TIMEOUT, avg_rtt * _RTT_MULTIPLIER)
 
     def _adapt(self) -> None:
         old_limit = self._sem.limit
@@ -93,9 +100,7 @@ class AdaptivePool:
             if new_limit != old_limit:
                 self._sem.set_limit(new_limit)
 
-        if self._rtts:
-            avg_rtt = sum(self._rtts) / len(self._rtts)
-            self.timeout = max(_MIN_TIMEOUT, avg_rtt * _RTT_MULTIPLIER)
+        self._update_timeout()
 
         self._timeouts = 0
         self._total = 0

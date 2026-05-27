@@ -3,7 +3,7 @@
 
 from scapy.all import ARP, srp, Ether
 from sondare.models import Host
-from sondare.utils.network import get_subnet, get_network_interface, resolve_hostnames
+from sondare.utils.network import get_subnet, get_network_interface, read_arp_cache, resolve_hostnames
 
 
 class Arp:
@@ -14,13 +14,14 @@ class Arp:
         self.timeout = timeout
         self.resolve_hostname = resolve_hostname
         self._answer = None
+        self._cidr: str = ""
 
     def scan(self) -> None:
         """Sends ARP broadcast and records responses."""
-        cidr = get_subnet()
+        self._cidr = get_subnet()
         iface = get_network_interface()
-        print(f"Scanning {cidr} ...", end=" ", flush=True)
-        arp = ARP(pdst=cidr)
+        print(f"Scanning {self._cidr} on {iface} ...", end=" ", flush=True)
+        arp = ARP(pdst=self._cidr)
         ether = Ether(dst="ff:ff:ff:ff:ff:ff")
         self._answer = srp(ether/arp, iface=iface, timeout=self.timeout, verbose=self.verbose, promisc=False)[0]
         print("done")
@@ -30,6 +31,10 @@ class Arp:
         if self._answer is None:
             return []
         hosts = [Host(ip=rcv.psrc, mac=rcv.hwsrc) for _, rcv in self._answer]
+        seen = {h.ip for h in hosts}
+        for ip, mac in read_arp_cache(self._cidr).items():
+            if ip not in seen:
+                hosts.append(Host(ip=ip, mac=mac))
         if self.resolve_hostname:
             names = resolve_hostnames([h.ip for h in hosts])
             hosts = [Host(ip=h.ip, mac=h.mac, hostname=names[h.ip]) for h in hosts]

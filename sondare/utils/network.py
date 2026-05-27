@@ -1,5 +1,8 @@
 import ipaddress
+import platform
+import re
 import socket
+import subprocess
 import psutil
 from concurrent.futures import ThreadPoolExecutor
 
@@ -39,6 +42,34 @@ def get_ip_address() -> str:
         if addr.family == socket.AF_INET:
             return addr.address
     return socket.gethostbyname(socket.gethostname())
+
+
+def read_arp_cache(subnet: str) -> dict[str, str]:
+    """Returns {ip: mac} for all entries in the OS ARP cache that fall within subnet."""
+    network = ipaddress.IPv4Network(subnet, strict=False)
+    result: dict[str, str] = {}
+    try:
+        if platform.system() == "Windows":
+            out = subprocess.check_output(["arp", "-a"], text=True, timeout=5,
+                                          stderr=subprocess.DEVNULL)
+            for line in out.splitlines():
+                m = re.search(r"(\d+\.\d+\.\d+\.\d+)\s+([\da-f-]{11,17})", line, re.I)
+                if m:
+                    ip, mac = m.group(1), m.group(2).replace("-", ":")
+                    if ipaddress.IPv4Address(ip) in network:
+                        result[ip] = mac.lower()
+        else:
+            out = subprocess.check_output(["arp", "-an"], text=True, timeout=5,
+                                          stderr=subprocess.DEVNULL)
+            for line in out.splitlines():
+                m = re.search(r"(\d+\.\d+\.\d+\.\d+)\s+\S+\s+([\da-f:]{11,17})", line, re.I)
+                if m:
+                    ip, mac = m.group(1), m.group(2)
+                    if ipaddress.IPv4Address(ip) in network:
+                        result[ip] = mac.lower()
+    except Exception:
+        pass
+    return result
 
 
 def warm_arp_cache(ip: str) -> None:
