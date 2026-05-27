@@ -7,18 +7,164 @@ import psutil
 from concurrent.futures import ThreadPoolExecutor
 
 
-def resolve_hostname(ip: str) -> str | None:
-    """Returns the PTR hostname for an IP, or None if not found."""
+_MDNS_SERVICES = [
+    "_companion-link._tcp.local.",
+    "_airplay._tcp.local.",
+    "_raop._tcp.local.",
+    "_workstation._tcp.local.",
+    "_smb._tcp.local.",
+    "_device-info._tcp.local.",
+]
+
+
+def _browse_mdns(timeout: float = 3.0) -> dict[str, str]:
+    """Returns {ip: hostname} discovered via mDNS service browsing."""
     try:
-        return socket.gethostbyaddr(ip)[0]
-    except (socket.herror, socket.gaierror, OSError):
+        import time
+        from zeroconf import Zeroconf, ServiceBrowser
+
+        hostnames: set[str] = set()
+
+        class _Listener:
+            def add_service(self, zc: Zeroconf, type_: str, name: str) -> None:
+                info = zc.get_service_info(type_, name, timeout=1500)
+                if info and info.server:
+                    hostnames.add(info.server.rstrip("."))
+            def remove_service(self, *_: object) -> None: pass
+            def update_service(self, *_: object) -> None: pass
+
+        zc = Zeroconf()
+        listener = _Listener()
+        browsers = [ServiceBrowser(zc, svc, listener) for svc in _MDNS_SERVICES]
+        time.sleep(timeout)
+        zc.close()
+
+        # Resolve each .local hostname to its network IPs (gethostbyname_ex returns all)
+        result: dict[str, str] = {}
+        for hostname in hostnames:
+            try:
+                _, _, addrs = socket.gethostbyname_ex(hostname)
+                for ip in addrs:
+                    if not ip.startswith("127."):
+                        result[ip] = hostname
+            except Exception:
+                pass
+        return result
+    except Exception:
+        return {}
+
+
+def _browse_ssdp(timeout: float = 3.0) -> dict[str, str]:
+    """Returns {ip: friendly_name} discovered via SSDP/UPnP M-SEARCH."""
+    import time
+    import urllib.request
+    import xml.etree.ElementTree as ET
+
+    msg = (
+        "M-SEARCH * HTTP/1.1\r\n"
+        "HOST: 239.255.255.250:1900\r\n"
+        'MAN: "ssdp:discover"\r\n'
+        "MX: 2\r\n"
+        "ST: upnp:rootdevice\r\n"
+        "\r\n"
+    ).encode()
+
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.settimeout(0.3)
+    try:
+        sock.sendto(msg, ("239.255.255.250", 1900))
+        locations: dict[str, str] = {}  # ip -> LOCATION url
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            try:
+                data, addr = sock.recvfrom(4096)
+                ip = addr[0]
+                if ip not in locations:
+                    text = data.decode("utf-8", errors="replace")
+                    for line in text.splitlines():
+                        if line.upper().startswith("LOCATION:"):
+                            locations[ip] = line.split(":", 1)[1].strip()
+                            break
+            except socket.timeout:
+                pass
+    finally:
+        sock.close()
+
+    result: dict[str, str] = {}
+    ns = {"u": "urn:schemas-upnp-org:device-1-0"}
+    for ip, url in locations.items():
+        try:
+            with urllib.request.urlopen(url, timeout=2) as resp:
+                tree = ET.fromstring(resp.read())
+            device = tree.find("u:device", ns)
+            if device is None:
+                continue
+            friendly = device.findtext("u:friendlyName", namespaces=ns)
+            if friendly:
+                result[ip] = friendly.strip()
+        except Exception:
+            pass
+    return result
+
+
+def _netbios_name(ip: str, timeout: float = 1.0) -> str | None:
+    """Returns the NetBIOS machine name for a Windows host, or None."""
+    # NBSTAT query: wildcard name lookup
+    query = (
+        b"\xab\xcd\x00\x10\x00\x01\x00\x00\x00\x00\x00\x00"
+        b"\x20CKAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\x00\x00\x21\x00\x01"
+    )
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.settimeout(timeout)
+    try:
+        sock.sendto(query, (ip, 137))
+        data, _ = sock.recvfrom(1024)
+        if len(data) < 57:
+            return None
+        num_names = data[56]
+        if num_names == 0:
+            return None
+        name = data[57:72].decode("ascii", errors="replace").rstrip()
+        return name if name else None
+    except Exception:
         return None
+    finally:
+        sock.close()
+
+
+def resolve_hostname(ip: str) -> str | None:
+    """Returns a PTR hostname for an IP, or None if not found."""
+    try:
+        name = socket.gethostbyaddr(ip)[0]
+        if name and name != ip:
+            return name
+    except (socket.herror, socket.gaierror, OSError):
+        pass
+    return None
 
 
 def resolve_hostnames(ips: list[str]) -> dict[str, str | None]:
-    """Resolves PTR records for a list of IPs concurrently. Returns {ip: hostname}."""
-    with ThreadPoolExecutor(max_workers=min(len(ips), 20)) as pool:
-        return dict(zip(ips, pool.map(resolve_hostname, ips)))
+    """Returns {ip: hostname} via PTR, mDNS service browse, and NetBIOS fallbacks."""
+    if not ips:
+        return {}
+    with ThreadPoolExecutor(max_workers=min(len(ips) + 2, 22)) as pool:
+        ptr_futures = {ip: pool.submit(resolve_hostname, ip) for ip in ips}
+        mdns_future = pool.submit(_browse_mdns, 3.0)
+        ssdp_future = pool.submit(_browse_ssdp, 3.0)
+        mdns_map = mdns_future.result()
+        ssdp_map = ssdp_future.result()
+        result: dict[str, str | None] = {}
+        for ip in ips:
+            name = ptr_futures[ip].result()
+            if not name:
+                name = mdns_map.get(ip)
+            if not name:
+                name = ssdp_map.get(ip)
+            if not name:
+                name = _netbios_name(ip)
+            result[ip] = name
+    return result
 
 
 def get_network_interface() -> str:

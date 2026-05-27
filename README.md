@@ -11,11 +11,11 @@
 **sondare** is a Python CLI tool for auditing local networks, built on top of [Scapy](https://scapy.net/). It provides scanning and fingerprinting methods, each running with multithreaded packet dispatch for speed.
 
 - **ARP** — discovers all active hosts on the local subnet (cannot be blocked by firewalls)
-- **ICMP** — pings all hosts to check reachability
+- **ICMP** — pings all hosts to check reachability (iOS devices block ICMP by design; use ARP for full discovery)
 - **TCP** — performs a SYN scan on a target host to find open ports; optionally grabs service banners
 - **UDP** — probes UDP ports; reports open (got a UDP reply) or open|filtered (no response) ports
 - **OS fingerprinting** — guesses the OS of a host by analysing TTL and TCP window size in a SYN-ACK response
-- **Hostname resolution** — resolves PTR records for discovered hosts (requires reverse DNS on the network)
+- **Hostname resolution** — resolves hostnames via mDNS service browse, SSDP/UPnP, NetBIOS, and PTR records
 
 ## Requirements
 
@@ -78,6 +78,9 @@ sudo sondare ping -t 10
 # Ping scan with hostname resolution
 sudo sondare ping --resolve_hostname
 
+# Note: iOS devices block ICMP by design and won't appear in ping results.
+# Use `sondare arp` for complete host discovery including iOS devices.
+
 # Scan ports 1–1024 on a target
 sudo sondare tcp --target 192.168.1.1:1-1024
 
@@ -134,14 +137,13 @@ sudo sondare tcp --target 192.168.1.1:1-1024 --banners --json
 ```bash
 arp:
   -t, --timeout          Packet timeout in seconds (default: 5)
-  --resolve_hostname     Resolve hostnames via PTR lookup
+  --resolve_hostname     Resolve hostnames via mDNS, SSDP, NetBIOS, and PTR
   -v, --verbose          Verbose scapy output
   --json                 JSON output
 
 ping:
   -t, --timeout          Packet timeout in seconds (default: 5)
-  -th, --threads         Number of threads (default: 20)
-  --resolve_hostname     Resolve hostnames via PTR lookup
+  --resolve_hostname     Resolve hostnames via mDNS, SSDP, NetBIOS, and PTR
   -v, --verbose          Verbose scapy output
   --json                 JSON output
 
