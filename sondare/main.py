@@ -184,18 +184,23 @@ def main() -> None:
 
             if args.json:
                 print(json.dumps({"hosts": [
-                    {"ip": h.ip, "mac": h.mac, **({"hostname": h.hostname} if args.resolve_hostname else {})}
+                    {
+                        "ip": h.ip,
+                        "mac": h.mac,
+                        **({"hostname": h.hostname} if args.resolve_hostname else {}),
+                        **({"vendor": h.vendor} if h.vendor else {}),
+                    }
                     for h in results
                 ]}))
             else:
                 if args.resolve_hostname:
-                    print("IP".ljust(15) + "HOSTNAME".ljust(30) + "MAC")
+                    print("IP".ljust(15) + "HOSTNAME".ljust(30) + "MAC".ljust(20) + "VENDOR")
                     for h in results:
-                        print(f"{h.ip.ljust(15)}{(h.hostname or '').ljust(30)}{h.mac}")
+                        print(f"{h.ip.ljust(15)}{(h.hostname or '').ljust(30)}{h.mac.ljust(20)}{h.vendor or ''}")
                 else:
-                    print("IP".ljust(15) + "MAC")
+                    print("IP".ljust(15) + "MAC".ljust(20) + "VENDOR")
                     for h in results:
-                        print(f"{h.ip.ljust(15)}{h.mac}")
+                        print(f"{h.ip.ljust(15)}{h.mac.ljust(20)}{h.vendor or ''}")
 
         elif args.scan_method == "ping":
             print(f"Running ICMP scan on {network.get_network_interface()} with {args.timeout}s timeout")

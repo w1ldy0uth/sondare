@@ -3,7 +3,7 @@
 
 from scapy.all import ARP, srp, Ether
 from sondare.models import Host
-from sondare.utils.network import get_subnet, get_network_interface, read_arp_cache, resolve_hostnames
+from sondare.utils.network import get_subnet, get_network_interface, get_mac_vendor, read_arp_cache, resolve_hostnames
 
 
 class Arp:
@@ -37,5 +37,7 @@ class Arp:
                 hosts.append(Host(ip=ip, mac=mac))
         if self.resolve_hostname:
             names = resolve_hostnames([h.ip for h in hosts])
-            hosts = [Host(ip=h.ip, mac=h.mac, hostname=names[h.ip]) for h in hosts]
+            hosts = [Host(ip=h.ip, mac=h.mac, hostname=names[h.ip], vendor=get_mac_vendor(h.mac)) for h in hosts]
+        else:
+            hosts = [Host(ip=h.ip, mac=h.mac, vendor=get_mac_vendor(h.mac)) for h in hosts]
         return hosts

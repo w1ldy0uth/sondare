@@ -133,6 +133,16 @@ def _netbios_name(ip: str, timeout: float = 1.0) -> str | None:
         sock.close()
 
 
+def get_mac_vendor(mac: str) -> str | None:
+    """Returns the full OUI vendor name for a MAC address, or None if unknown."""
+    try:
+        from scapy.all import conf
+        short, long = conf.manufdb._get_manuf_couple(mac)
+        return long if long != mac else None
+    except Exception:
+        return None
+
+
 def resolve_hostname(ip: str) -> str | None:
     """Returns a PTR hostname for an IP, or None if not found."""
     try:

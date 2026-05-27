@@ -6,6 +6,7 @@ class Host(NamedTuple):
     ip: str
     mac: str
     hostname: str | None = None
+    vendor: str | None = None
 
 
 class Port(NamedTuple):
