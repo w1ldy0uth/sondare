@@ -1,4 +1,5 @@
 from unittest.mock import patch, MagicMock
+from scapy.all import IP, ICMP
 from sondare.services.icmp import Ping
 
 
@@ -6,7 +7,7 @@ def _make_ping_scanner(net_mocks, ip="192.168.1.1"):
     addrs, stats = net_mocks(ip=ip)
     with patch("psutil.net_if_addrs", return_value=addrs), \
          patch("psutil.net_if_stats", return_value=stats):
-        return Ping(verbose=False, timeout=1, threads=1)
+        return Ping(verbose=False, timeout=1)
 
 
 def _icmp_reply(icmp_type: int):
@@ -18,35 +19,40 @@ def _icmp_reply(icmp_type: int):
     return pkt
 
 
-class TestCheckHost:
+class TestScan:
     def test_echo_reply_adds_host(self, net_mocks):
         scanner = _make_ping_scanner(net_mocks)
-        with patch("sondare.services.icmp.sr1", return_value=_icmp_reply(0)), \
+        sent = IP(dst="192.168.1.2") / ICMP()
+        with patch("sondare.services.icmp.sr", return_value=([(sent, _icmp_reply(0))], [])), \
              patch("builtins.print"):
-            scanner.check_host("192.168.1.2")
+            scanner.scan()
         assert "192.168.1.2" in scanner.results
 
     def test_unreachable_does_not_add_host(self, net_mocks):
         scanner = _make_ping_scanner(net_mocks)
-        with patch("sondare.services.icmp.sr1", return_value=_icmp_reply(3)), \
+        sent = IP(dst="192.168.1.2") / ICMP()
+        with patch("sondare.services.icmp.sr", return_value=([(sent, _icmp_reply(3))], [])), \
              patch("builtins.print"):
-            scanner.check_host("192.168.1.2")
+            scanner.scan()
         assert scanner.results == []
 
     def test_no_response_does_not_add_host(self, net_mocks):
         scanner = _make_ping_scanner(net_mocks)
-        with patch("sondare.services.icmp.sr1", return_value=None), \
+        with patch("sondare.services.icmp.sr", return_value=([], [])), \
              patch("builtins.print"):
-            scanner.check_host("192.168.1.2")
+            scanner.scan()
         assert scanner.results == []
 
-    def test_increments_done_counter(self, net_mocks):
+    def test_multiple_hosts_found(self, net_mocks):
         scanner = _make_ping_scanner(net_mocks)
-        with patch("sondare.services.icmp.sr1", return_value=None), \
+        answered = [
+            (IP(dst="192.168.1.2") / ICMP(), _icmp_reply(0)),
+            (IP(dst="192.168.1.3") / ICMP(), _icmp_reply(0)),
+        ]
+        with patch("sondare.services.icmp.sr", return_value=(answered, [])), \
              patch("builtins.print"):
-            scanner.check_host("192.168.1.2")
-            scanner.check_host("192.168.1.3")
-        assert scanner._done == 2
+            scanner.scan()
+        assert scanner.results == ["192.168.1.2", "192.168.1.3"]
 
 
 class TestGetResults:
@@ -61,17 +67,15 @@ class TestResolveHostname:
         assert scanner.get_hostnames() == {}
 
     def test_scan_resolves_hostnames_when_flag_set(self, net_mocks):
-        icmp_reply = MagicMock()
-        icmp_reply.haslayer.return_value = True
-        icmp_reply.getlayer.return_value.type = 0
-
         addrs, stats = net_mocks(ip="192.168.1.1")
         resolved = {"192.168.1.2": "desktop.local"}
+        sent = IP(dst="192.168.1.2") / ICMP()
+
         with patch("psutil.net_if_addrs", return_value=addrs), \
              patch("psutil.net_if_stats", return_value=stats):
-            scanner = Ping(verbose=False, timeout=1, threads=1, resolve_hostname=True)
+            scanner = Ping(verbose=False, timeout=1, resolve_hostname=True)
 
-        with patch("sondare.services.icmp.sr1", return_value=icmp_reply), \
+        with patch("sondare.services.icmp.sr", return_value=([(sent, _icmp_reply(0))], [])), \
              patch("sondare.services.icmp.resolve_hostnames", return_value=resolved) as mock_resolve, \
              patch("builtins.print"):
             scanner.scan()

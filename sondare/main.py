@@ -107,7 +107,6 @@ Examples:
     # Ping scan
     ping_parser = subparsers.add_parser("ping", parents=[shared], help="Ping all hosts in local network with ICMP packets.")
     ping_parser.add_argument("-t", "--timeout", type=int, default=5, help="Timeout for scan response")
-    ping_parser.add_argument("-th", "--threads", type=int, default=20, help="Amount of threads to use")
     ping_parser.add_argument("--resolve_hostname", action="store_true", help="Resolve hostnames via PTR lookup")
 
     # TCP scan
@@ -199,8 +198,8 @@ def main() -> None:
                         print(f"{h.ip.ljust(15)}{h.mac}")
 
         elif args.scan_method == "ping":
-            print(f"Running ICMP scan on {network.get_network_interface()} with {args.timeout} seconds timeout and {args.threads} {'thread' if args.threads == 1 else 'threads'}")
-            scanner = Ping(verbose=args.verbose, timeout=args.timeout, threads=args.threads, resolve_hostname=args.resolve_hostname)
+            print(f"Running ICMP scan on {network.get_network_interface()} with {args.timeout}s timeout")
+            scanner = Ping(verbose=args.verbose, timeout=args.timeout, resolve_hostname=args.resolve_hostname)
             scanner.scan()
             results = scanner.get_results()
 

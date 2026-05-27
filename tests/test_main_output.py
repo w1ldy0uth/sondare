@@ -90,7 +90,7 @@ class TestArpJsonOutput:
 
 class TestPingJsonOutput:
     def test_json_flag_prints_json(self, capsys):
-        args = _args(scan_method="ping", threads=1, json=True, resolve_hostname=False)
+        args = _args(scan_method="ping", json=True, resolve_hostname=False)
         mock_scanner = MagicMock()
         mock_scanner.get_results.return_value = ["192.168.1.2", "192.168.1.5"]
 
@@ -108,7 +108,7 @@ class TestPingJsonOutput:
         assert parsed == {"hosts": ["192.168.1.2", "192.168.1.5"]}
 
     def test_no_json_flag_prints_alive(self, capsys):
-        args = _args(scan_method="ping", threads=1, json=False, resolve_hostname=False)
+        args = _args(scan_method="ping", json=False, resolve_hostname=False)
         mock_scanner = MagicMock()
         mock_scanner.get_results.return_value = ["192.168.1.2"]
 
