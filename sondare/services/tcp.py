@@ -95,5 +95,5 @@ class Tcp:
             ]
 
     def get_results(self) -> list[Port]:
-        """Returns open ports discovered by scan()."""
-        return [Port(ip=p.ip, port=p.port, banner=p.banner, service=get_port_service(p.port)) for p in self.open_ports]
+        """Returns open ports discovered by scan(), sorted by port number."""
+        return [Port(ip=p.ip, port=p.port, banner=p.banner, service=get_port_service(p.port)) for p in sorted(self.open_ports, key=lambda p: p.port)]

@@ -97,6 +97,18 @@ class TestGetResults:
 
         assert set(scanner.get_results()) == {Port("10.0.0.1", 22, service="ssh"), Port("10.0.0.1", 80, service="http")}
 
+    def test_results_sorted_by_port(self):
+        scanner = _make_scanner(port_begin=22, port_end=443)
+        with patch("sondare.services.tcp.sr1", return_value=_tcp_response(SYN_ACK)), \
+             patch("sondare.services.tcp.sr"), \
+             patch("random.randint", return_value=54321):
+            scanner.check_port(443)
+            scanner.check_port(22)
+            scanner.check_port(80)
+
+        ports = [p.port for p in scanner.get_results()]
+        assert ports == sorted(ports)
+
 
 class TestGrabBanner:
     def test_raw_banner_on_non_http_port(self):

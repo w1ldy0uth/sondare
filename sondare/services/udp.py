@@ -89,5 +89,5 @@ class Udp:
         print()
 
     def get_results(self) -> list[Port]:
-        """Returns open|filtered ports discovered by scan()."""
-        return [Port(ip=p.ip, port=p.port, service=get_port_service(p.port, "udp")) for p in self.open_ports]
+        """Returns open|filtered ports discovered by scan(), sorted by port number."""
+        return [Port(ip=p.ip, port=p.port, service=get_port_service(p.port, "udp")) for p in sorted(self.open_ports, key=lambda p: p.port)]

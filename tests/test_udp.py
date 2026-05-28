@@ -110,3 +110,16 @@ class TestGetResults:
                 scanner.check_port(port)
 
         assert set(scanner.get_results()) == {Port("10.0.0.1", 53, service="domain"), Port("10.0.0.1", 69, service="tftp")}
+
+    def test_results_sorted_by_port(self):
+        scanner = _make_scanner(port_begin=53, port_end=123)
+        responses = {
+            123: None,            # open|filtered (NTP)
+            53: _udp_response(),  # open (DNS)
+        }
+        for port, rsp in responses.items():
+            with patch("sondare.services.udp.sr1", return_value=rsp):
+                scanner.check_port(port)
+
+        ports = [p.port for p in scanner.get_results()]
+        assert ports == sorted(ports)
