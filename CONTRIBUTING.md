@@ -2,6 +2,8 @@
 
 Want to contribute? Open an issue to discuss your idea first, or fork the repository and submit a pull request. For bugs, a minimal reproduction case in the issue is appreciated.
 
+**Important note:** consider cheking [roadmap](https://github.com/w1ldy0uth/sondare/wiki/Roadmap) before suggesting an improvement or a new feature.
+
 ## Setup
 
 **macOS / Linux**
