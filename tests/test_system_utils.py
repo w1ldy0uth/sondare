@@ -128,7 +128,9 @@ class TestResolveHostnames:
         def _fake_gethostbyaddr(ip):
             return (f"host-{ip.split('.')[-1]}.local", [], [ip])
 
-        with patch("sondare.utils.network.socket.gethostbyaddr", side_effect=_fake_gethostbyaddr):
+        with patch("sondare.utils.network.socket.gethostbyaddr", side_effect=_fake_gethostbyaddr), \
+             patch("sondare.utils.network._browse_mdns", return_value={}), \
+             patch("sondare.utils.network._browse_ssdp", return_value={}):
             result = network.resolve_hostnames(["192.168.1.1", "192.168.1.2"])
 
         assert result == {"192.168.1.1": "host-1.local", "192.168.1.2": "host-2.local"}
@@ -139,7 +141,100 @@ class TestResolveHostnames:
                 return ("router.local", [], [ip])
             raise socket.herror
 
-        with patch("sondare.utils.network.socket.gethostbyaddr", side_effect=_fake):
+        with patch("sondare.utils.network.socket.gethostbyaddr", side_effect=_fake), \
+             patch("sondare.utils.network._browse_mdns", return_value={}), \
+             patch("sondare.utils.network._browse_ssdp", return_value={}), \
+             patch("sondare.utils.network._netbios_name", return_value=None):
             result = network.resolve_hostnames(["192.168.1.1", "192.168.1.2"])
 
         assert result == {"192.168.1.1": "router.local", "192.168.1.2": None}
+
+    def test_returns_empty_dict_for_empty_input(self):
+        result = network.resolve_hostnames([])
+        assert result == {}
+
+
+class TestResolveHostnamesFallback:
+    """Verifies the PTR → mDNS → SSDP → NetBIOS fallback priority."""
+
+    _NO_PTR = socket.herror
+
+    def _run(self, ip, ptr_result, mdns_map, ssdp_map, netbios_result):
+        ptr_side = (lambda _: (ptr_result, [], [ip])) if ptr_result else self._NO_PTR
+        with patch("sondare.utils.network.socket.gethostbyaddr", side_effect=ptr_side), \
+             patch("sondare.utils.network._browse_mdns", return_value=mdns_map), \
+             patch("sondare.utils.network._browse_ssdp", return_value=ssdp_map), \
+             patch("sondare.utils.network._netbios_name", return_value=netbios_result):
+            return network.resolve_hostnames([ip])[ip]
+
+    def test_ptr_takes_priority_over_all(self):
+        result = self._run(
+            "192.168.1.1",
+            ptr_result="ptr.local",
+            mdns_map={"192.168.1.1": "mdns.local"},
+            ssdp_map={"192.168.1.1": "SSDP Device"},
+            netbios_result="NBNAME",
+        )
+        assert result == "ptr.local"
+
+    def test_mdns_used_when_ptr_fails(self):
+        result = self._run(
+            "192.168.1.1",
+            ptr_result=None,
+            mdns_map={"192.168.1.1": "macbook.local"},
+            ssdp_map={"192.168.1.1": "SSDP Device"},
+            netbios_result="NBNAME",
+        )
+        assert result == "macbook.local"
+
+    def test_ssdp_used_when_ptr_and_mdns_fail(self):
+        result = self._run(
+            "192.168.1.1",
+            ptr_result=None,
+            mdns_map={},
+            ssdp_map={"192.168.1.1": "Cudy router"},
+            netbios_result="NBNAME",
+        )
+        assert result == "Cudy router"
+
+    def test_netbios_used_when_ptr_mdns_ssdp_fail(self):
+        result = self._run(
+            "192.168.1.1",
+            ptr_result=None,
+            mdns_map={},
+            ssdp_map={},
+            netbios_result="W1PC",
+        )
+        assert result == "W1PC"
+
+    def test_none_when_all_methods_fail(self):
+        result = self._run(
+            "192.168.1.1",
+            ptr_result=None,
+            mdns_map={},
+            ssdp_map={},
+            netbios_result=None,
+        )
+        assert result is None
+
+    def test_each_ip_resolved_independently(self):
+        with patch("sondare.utils.network.socket.gethostbyaddr", side_effect=socket.herror), \
+             patch("sondare.utils.network._browse_mdns", return_value={"192.168.1.2": "macbook.local"}), \
+             patch("sondare.utils.network._browse_ssdp", return_value={"192.168.1.1": "Cudy router"}), \
+             patch("sondare.utils.network._netbios_name", return_value=None):
+            result = network.resolve_hostnames(["192.168.1.1", "192.168.1.2"])
+
+        assert result == {"192.168.1.1": "Cudy router", "192.168.1.2": "macbook.local"}
+
+
+class TestGetPortService:
+    def test_returns_name_for_known_port(self):
+        assert network.get_port_service(22) == "ssh"
+        assert network.get_port_service(80) == "http"
+        assert network.get_port_service(443) == "https"
+
+    def test_returns_none_for_unknown_port(self):
+        assert network.get_port_service(0) is None
+
+    def test_respects_proto_argument(self):
+        assert network.get_port_service(53, "udp") == "domain"
