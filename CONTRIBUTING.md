@@ -1,5 +1,7 @@
 # Contributing to sondare
 
+Want to contribute? Open an issue to discuss your idea first, or fork the repository and submit a pull request. For bugs, a minimal reproduction case in the issue is appreciated.
+
 ## Setup
 
 **macOS / Linux**
@@ -73,7 +75,7 @@ Add it to `sondare/utils/network.py` if it is network-related, or create a new f
 - JSON output tests should assert the full parsed structure, not just substrings.
 - Do not write tests that require root or send real packets.
 
-## Commit and branch naming
+## Commit, branch, and pull request naming
 
 Branches and commit messages follow this pattern:
 
@@ -84,6 +86,8 @@ fix/<version>-<short_description>       # bug fix
 ```
 
 Examples: `feat/1.0.4-udp_service_names`, `fix/1.0.4-adaptive_pool_edge_case`, `chore/1.0.4-ci_zeroconf_dep`.
+
+Pull request titles follow the same convention: `feat/1.0.4-udp_service_names`, `fix/1.0.4-adaptive_pool_edge_case`. Keep the title short — use the PR description for context, motivation, and any breaking changes.
 
 ## Dependencies
 
