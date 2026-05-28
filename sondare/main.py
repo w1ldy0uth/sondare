@@ -76,22 +76,64 @@ def parse_args() -> argparse.ArgumentParser:
         description=f"sondare {_get_version()} — Probe and monitor local network hosts.",
         formatter_class=argparse.RawTextHelpFormatter,
         epilog="""
-Examples:
-    sudo sondare arp                                         # ARP scan
-    sudo sondare arp --resolve_hostname                      # ARP scan with hostname resolution
-    sudo sondare arp --json                                  # ARP scan, JSON output
-    sudo sondare ping                                        # ICMP scan
-    sudo sondare ping --resolve_hostname                     # ICMP scan with hostname resolution
-    sudo sondare tcp --target 192.168.1.1:1-1024             # TCP port scan
-    sudo sondare tcp --target 192.168.1.1:1-1024 --banners   # TCP scan with service banners
-    sudo sondare tcp --target 192.168.1.1:1-1024 --json      # TCP scan, JSON output
-    sudo sondare udp --target 192.168.1.1:1-1024             # UDP port scan
-    sudo sondare os --target 192.168.1.1                     # OS fingerprint
-    sudo sondare monitor arp                                 # Watch for new hosts / MAC changes
-    sudo sondare monitor hosts                               # Host up/down monitor (auto-discovers)
-    sudo sondare monitor ports --target 192.168.1.1:1-1024   # Port state monitor
-    sudo sondare monitor traffic --filter "udp port 53"      # Live packet capture
-    sudo sondare graph --fingerprint                         # Network graph with OS fingerprinting
+arp / ping:
+  -t, --timeout          Packet timeout in seconds (default: 5)
+  --resolve_hostname     Resolve hostnames via mDNS, SSDP, NetBIOS, and PTR
+  -v, --verbose          Verbose scapy output
+  --json                 JSON output
+
+tcp:
+  --target          Target as ip, ip:port, or ip:start-end (default: local machine, ports 1-1000)
+  -t, --timeout     Packet timeout in seconds (default: 3)
+  -th, --threads    Number of threads (default: 20)
+  -r, --retries     Retries per port on no response (default: 2)
+  -b, --banners     Grab service banners from open ports
+  -v, --verbose     Verbose scapy output
+  --json            JSON output
+
+udp:
+  --target          Target as ip, ip:port, or ip:start-end (default: local machine, ports 1-1000)
+  -t, --timeout     Packet timeout in seconds (default: 3)
+  -th, --threads    Number of threads (default: 20)
+  -r, --retries     Retries per port on no response (default: 2)
+  -v, --verbose     Verbose scapy output
+  --json            JSON output
+
+os:
+  --target          Target IP address (required)
+  --port            Port to probe; omit to auto-try common ports
+  -t, --timeout     Timeout per probe in seconds (default: 3)
+  -v, --verbose     Verbose scapy output
+  --json            JSON output
+
+monitor arp:
+  -t, --timeout     Timeout for initial ARP seed scan (default: 5)
+  -v, --verbose     Verbose scapy output
+
+monitor hosts:
+  --hosts           Hosts to monitor; omit to auto-discover via ARP
+  -i, --interval    Seconds between ping rounds (default: 30)
+  -t, --timeout     Ping timeout in seconds (default: 2)
+  -th, --threads    Concurrent pings per round (default: 50)
+  -v, --verbose     Verbose scapy output
+
+monitor ports:
+  --target          Target as ip, ip:port, or ip:start-end (default: local machine, ports 1-1000)
+  -i, --interval    Seconds between scans (default: 60)
+  -t, --timeout     Timeout per probe in seconds (default: 3)
+  -th, --threads    Concurrent probes per scan (default: 20)
+  -v, --verbose     Verbose scapy output
+
+monitor traffic:
+  --filter          BPF filter expression (e.g. 'tcp', 'udp port 53', 'host 192.168.1.1')
+  -v, --verbose     Verbose scapy output
+
+graph:
+  --fingerprint     OS-fingerprint each discovered host
+  -o, --output      Output file path (default: sondare_graph.html)
+  -t, --timeout     ARP scan timeout in seconds (default: 3)
+  -th, --threads    Concurrent fingerprint probes (default: 10)
+  -v, --verbose     Verbose scapy output
         """
     )
 
