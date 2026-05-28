@@ -19,6 +19,6 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install dependencies
-        run: pip install scapy psutil pytest
+        run: pip install -e ".[dev]"
       - name: Run tests
         run: pytest tests/

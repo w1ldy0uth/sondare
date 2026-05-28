@@ -84,18 +84,18 @@ class TestGetResults:
         assert scanner.get_results() == []
 
     def test_returns_open_ports_after_check(self):
-        scanner = _make_scanner(port_begin=79, port_end=81)
+        scanner = _make_scanner(port_begin=22, port_end=80)
         with patch("sondare.services.tcp.sr1", side_effect=[
-            _tcp_response(SYN_ACK),  # port 79 open
-            _tcp_response(RST),      # port 80 closed
-            _tcp_response(SYN_ACK),  # port 81 open
+            _tcp_response(SYN_ACK),  # port 22 open
+            _tcp_response(RST),      # port 80 closed (skipping range interior)
+            _tcp_response(SYN_ACK),  # port 80 open
         ]), patch("sondare.services.tcp.sr"), \
            patch("random.randint", return_value=54321):
-            scanner.check_port(79)
+            scanner.check_port(22)
+            scanner.check_port(443)
             scanner.check_port(80)
-            scanner.check_port(81)
 
-        assert set(scanner.get_results()) == {Port("10.0.0.1", 79, service="finger"), Port("10.0.0.1", 81, service="hosts2-ns")}
+        assert set(scanner.get_results()) == {Port("10.0.0.1", 22, service="ssh"), Port("10.0.0.1", 80, service="http")}
 
 
 class TestGrabBanner:
