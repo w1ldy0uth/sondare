@@ -6,7 +6,7 @@ import time
 from queue import Queue
 from scapy.all import IP, UDP, ICMP, sr1
 from sondare.models import Port
-from sondare.utils.network import warm_arp_cache
+from sondare.utils.network import warm_arp_cache, get_port_service
 from sondare.utils.adaptive_pool import AdaptivePool
 
 
@@ -90,4 +90,4 @@ class Udp:
 
     def get_results(self) -> list[Port]:
         """Returns open|filtered ports discovered by scan()."""
-        return self.open_ports
+        return [Port(ip=p.ip, port=p.port, service=get_port_service(p.port, "udp")) for p in self.open_ports]

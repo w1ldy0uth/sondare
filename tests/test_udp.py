@@ -98,15 +98,15 @@ class TestGetResults:
         assert scanner.get_results() == []
 
     def test_returns_open_filtered_ports_after_check(self):
-        scanner = _make_scanner(port_begin=53, port_end=55)
+        scanner = _make_scanner(port_begin=53, port_end=69)
         responses = {
             53: None,                                                            # open|filtered
             54: _icmp_response(PORT_UNREACHABLE_TYPE, PORT_UNREACHABLE_CODE),   # closed
-            55: _udp_response(),                                                 # open
+            69: _udp_response(),                                                 # open
         }
 
         for port, rsp in responses.items():
             with patch("sondare.services.udp.sr1", return_value=rsp):
                 scanner.check_port(port)
 
-        assert set(scanner.get_results()) == {Port("10.0.0.1", 53), Port("10.0.0.1", 55)}
+        assert set(scanner.get_results()) == {Port("10.0.0.1", 53, service="domain"), Port("10.0.0.1", 69, service="tftp")}

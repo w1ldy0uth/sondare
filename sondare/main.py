@@ -293,11 +293,16 @@ def main() -> None:
             results = scanner.get_results()
 
             if args.json:
-                print(json.dumps({"host": target.ip, "ports": [p.port for p in results]}))
+                ports_data = [
+                    {"port": p.port, **({"service": p.service} if p.service else {})}
+                    for p in results
+                ]
+                print(json.dumps({"host": target.ip, "ports": ports_data}))
             else:
                 print(f"Open|filtered ports: {len(results)}\n_______________________")
                 for port in results:
-                    print(f"{port.ip}:{port.port} is open|filtered")
+                    label = f"{port.ip}:{port.port}/{port.service}" if port.service else f"{port.ip}:{port.port}"
+                    print(f"{label} is open|filtered")
 
         elif args.scan_method == "monitor":
             if args.monitor_type is None:
