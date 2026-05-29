@@ -3,55 +3,75 @@ import platform
 import re
 import socket
 import subprocess
+import threading
 import psutil
 from concurrent.futures import ThreadPoolExecutor
 
 
-_MDNS_SERVICES = [
-    "_companion-link._tcp.local.",
+_MDNS_SCAN_SERVICES = [
+    "_http._tcp.local.",
+    "_https._tcp.local.",
+    "_ssh._tcp.local.",
+    "_ftp._tcp.local.",
+    "_smb._tcp.local.",
+    "_afp._tcp.local.",
+    "_ipp._tcp.local.",
+    "_printer._tcp.local.",
     "_airplay._tcp.local.",
     "_raop._tcp.local.",
+    "_companion-link._tcp.local.",
     "_workstation._tcp.local.",
-    "_smb._tcp.local.",
     "_device-info._tcp.local.",
+    "_googlecast._tcp.local.",
+    "_spotify-connect._tcp.local.",
+    "_homekit._tcp.local.",
 ]
 
 
-def _browse_mdns(timeout: float = 3.0) -> dict[str, str]:
-    """Returns {ip: hostname} discovered via mDNS service browsing."""
+def browse_mdns(service_types: list[str] | None = None, timeout: float = 5.0) -> list:
+    """Returns a list of MdnsRecord for each service advertisement found on the network."""
+    from sondare.models import MdnsRecord
     try:
         import time
         from zeroconf import Zeroconf, ServiceBrowser
 
-        hostnames: set[str] = set()
+        seen: set[tuple[str, str, str, int]] = set()
+        lock = threading.Lock()
 
         class _Listener:
             def add_service(self, zc: Zeroconf, type_: str, name: str) -> None:
                 info = zc.get_service_info(type_, name, timeout=1500)
-                if info and info.server:
-                    hostnames.add(info.server.rstrip("."))
+                if not info:
+                    return
+                hostname = info.server.rstrip(".") if info.server else name
+                service = type_.removesuffix(".local.").removesuffix(".")
+                port = info.port or 0
+                for addr_bytes in info.addresses:
+                    if len(addr_bytes) != 4:
+                        continue
+                    ip = socket.inet_ntoa(addr_bytes)
+                    if not ip.startswith("127."):
+                        with lock:
+                            seen.add((hostname, ip, service, port))
             def remove_service(self, *_: object) -> None: pass
             def update_service(self, *_: object) -> None: pass
 
+        types = service_types if service_types is not None else _MDNS_SCAN_SERVICES
         zc = Zeroconf()
         listener = _Listener()
-        browsers = [ServiceBrowser(zc, svc, listener) for svc in _MDNS_SERVICES]
+        browsers = [ServiceBrowser(zc, svc, listener) for svc in types]
         time.sleep(timeout)
         zc.close()
 
-        # Resolve each .local hostname to its network IPs (gethostbyname_ex returns all)
-        result: dict[str, str] = {}
-        for hostname in hostnames:
-            try:
-                _, _, addrs = socket.gethostbyname_ex(hostname)
-                for ip in addrs:
-                    if not ip.startswith("127."):
-                        result[ip] = hostname
-            except Exception:
-                pass
-        return result
+        return [MdnsRecord(hostname=h, ip=ip, service=s, port=p) for h, ip, s, p in sorted(seen)]
     except Exception:
-        return {}
+        return []
+
+
+def _browse_mdns(timeout: float = 3.0) -> dict[str, str]:
+    """Returns {ip: hostname} discovered via mDNS service browsing."""
+    records = browse_mdns(service_types=_MDNS_SCAN_SERVICES, timeout=timeout)
+    return {r.ip: r.hostname for r in records}
 
 
 def _browse_ssdp(timeout: float = 3.0) -> dict[str, str]:

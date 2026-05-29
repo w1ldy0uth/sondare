@@ -19,6 +19,7 @@ from sondare.services.tcp import Tcp
 from sondare.services.udp import Udp
 from sondare.services.fingerprint import OsFingerprinter
 from sondare.services.graph import NetworkGraph
+from sondare.services.mdns import Mdns
 from sondare.monitors.arp_watcher import ArpWatcher
 from sondare.monitors.hosts_watcher import HostsWatcher
 from sondare.monitors.port_watcher import PortWatcher
@@ -134,6 +135,11 @@ graph:
   -t, --timeout     ARP scan timeout in seconds (default: 3)
   -th, --threads    Concurrent fingerprint probes (default: 10)
   -v, --verbose     Verbose scapy output
+
+mdns:
+  -t, --timeout     Browse duration in seconds (default: 5)
+  -v, --verbose     Verbose scapy output
+  --json            JSON output
         """
     )
 
@@ -200,6 +206,10 @@ graph:
     graph_parser.add_argument("-th", "--threads", type=int, default=10, help="Concurrent fingerprint probes (default: 10)")
     graph_parser.add_argument("--fingerprint", action="store_true", help="OS-fingerprint each discovered host")
     graph_parser.add_argument("-o", "--output", default="sondare_graph.html", help="Output file path (default: sondare_graph.html)")
+
+    # mDNS scan
+    mdns_parser = subparsers.add_parser("mdns", parents=[shared], help="Discover mDNS/Bonjour services on the local network.")
+    mdns_parser.add_argument("-t", "--timeout", type=float, default=5.0, help="Browse duration in seconds (default: 5)")
 
     return parser
 
@@ -388,6 +398,26 @@ def main() -> None:
                 output=args.output,
             )
             grapher.run()
+
+        elif args.scan_method == "mdns":
+            print(f"Browsing mDNS services for {args.timeout}s ...", end=" ", flush=True)
+            scanner = Mdns(verbose=args.verbose, timeout=args.timeout)
+            scanner.scan()
+            print("done")
+            results = scanner.get_results()
+
+            if args.json:
+                print(json.dumps({"services": [
+                    {"hostname": r.hostname, "ip": r.ip, "service": r.service, "port": r.port}
+                    for r in results
+                ]}))
+            else:
+                if not results:
+                    print("No mDNS services found.")
+                else:
+                    print("HOSTNAME".ljust(35) + "IP".ljust(18) + "SERVICE".ljust(30) + "PORT")
+                    for r in results:
+                        print(f"{r.hostname.ljust(35)}{r.ip.ljust(18)}{r.service.ljust(30)}{r.port}")
 
     except KeyboardInterrupt:
         print("\nStopped.")

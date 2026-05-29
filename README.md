@@ -62,6 +62,7 @@ sudo sondare <command> [options]
 | `monitor ports` | Periodically SYN-scan a target and report port state changes |
 | `monitor traffic` | Live packet capture with per-packet protocol breakdown |
 | `graph` | Generate an interactive HTML network graph of the local subnet |
+| `mdns` | Discover mDNS/Bonjour services on the local network |
 
 ### Examples
 
@@ -126,10 +127,17 @@ sudo sondare graph --fingerprint
 # Save to a custom path
 sudo sondare graph -o /tmp/my_network.html
 
+# Discover mDNS/Bonjour services (AirPlay, SSH, SMB, Chromecast, HomeKit, …)
+sudo sondare mdns
+
+# Browse for longer to catch slower devices
+sudo sondare mdns -t 10
+
 # Output results as JSON (supported by all scan commands)
 sudo sondare arp --json
 sudo sondare ping --json
 sudo sondare tcp --target 192.168.1.1:1-1024 --banners --json
+sudo sondare mdns --json
 ```
 
 ### Options
@@ -197,4 +205,9 @@ graph:
   -t, --timeout     ARP scan timeout in seconds (default: 3)
   -th, --threads    Concurrent fingerprint probes (default: 10)
   -v, --verbose     Verbose scapy output
+
+mdns:
+  -t, --timeout     Browse duration in seconds (default: 5)
+  -v, --verbose     Verbose scapy output
+  --json            JSON output
 ```

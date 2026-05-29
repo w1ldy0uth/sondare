@@ -23,3 +23,11 @@ class Fingerprint(NamedTuple):
     os: str
     ttl: int
     window: int
+
+
+class MdnsRecord(NamedTuple):
+    """An mDNS/Bonjour service advertisement discovered on the local network."""
+    hostname: str
+    ip: str
+    service: str
+    port: int
