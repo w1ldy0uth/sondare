@@ -63,6 +63,7 @@ sudo sondare <command> [options]
 | `monitor traffic` | Live packet capture with per-packet protocol breakdown |
 | `graph` | Generate an interactive HTML network graph of the local subnet |
 | `mdns` | Discover mDNS/Bonjour services on the local network |
+| `trace` | Trace the network path to a target host |
 
 ### Examples
 
@@ -126,6 +127,12 @@ sudo sondare graph --fingerprint
 
 # Save to a custom path
 sudo sondare graph -o /tmp/my_network.html
+
+# Trace the network path to a host
+sudo sondare trace --target 8.8.8.8
+
+# Trace with a longer per-hop timeout and a cap of 20 hops
+sudo sondare trace --target 8.8.8.8 -t 5 --max-hops 20
 
 # Discover mDNS/Bonjour services (AirPlay, SSH, SMB, Chromecast, HomeKit, …)
 sudo sondare mdns
@@ -210,4 +217,13 @@ mdns:
   -t, --timeout     Browse duration in seconds (default: 5)
   -v, --verbose     Verbose scapy output
   --json            JSON output
+
+trace:
+  --target          Target IP address (required)
+  -t, --timeout     Timeout per hop in seconds (default: 3)
+  --max-hops        Maximum number of hops (default: 30)
+  -v, --verbose     Verbose scapy output
+  --json            JSON output
 ```
+
+> **Note:** `trace` uses ICMP echo probes. Hosts that block ICMP will show `*` for all hops.

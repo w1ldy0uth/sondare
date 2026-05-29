@@ -31,3 +31,10 @@ class MdnsRecord(NamedTuple):
     ip: str
     service: str
     port: int
+
+
+class Hop(NamedTuple):
+    """A single hop in a traceroute path."""
+    ttl: int
+    ip: str | None       # None when the hop did not respond
+    rtt_ms: float | None # None when the hop did not respond

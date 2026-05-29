@@ -20,6 +20,7 @@ from sondare.services.udp import Udp
 from sondare.services.fingerprint import OsFingerprinter
 from sondare.services.graph import NetworkGraph
 from sondare.services.mdns import Mdns
+from sondare.services.trace import Traceroute
 from sondare.monitors.arp_watcher import ArpWatcher
 from sondare.monitors.hosts_watcher import HostsWatcher
 from sondare.monitors.port_watcher import PortWatcher
@@ -140,6 +141,15 @@ mdns:
   -t, --timeout     Browse duration in seconds (default: 5)
   -v, --verbose     Verbose scapy output
   --json            JSON output
+
+trace:
+  --target          Target IP address (required)
+  -t, --timeout     Timeout per hop in seconds (default: 3)
+  --max-hops        Maximum number of hops (default: 30)
+  -v, --verbose     Verbose scapy output
+  --json            JSON output
+
+Note: trace uses ICMP echo probes. Hosts that block ICMP will show * for all hops.
         """
     )
 
@@ -210,6 +220,12 @@ mdns:
     # mDNS scan
     mdns_parser = subparsers.add_parser("mdns", parents=[shared], help="Discover mDNS/Bonjour services on the local network.")
     mdns_parser.add_argument("-t", "--timeout", type=float, default=5.0, help="Browse duration in seconds (default: 5)")
+
+    # Traceroute
+    trace_parser = subparsers.add_parser("trace", parents=[shared], help="Trace the network path to a target host.")
+    trace_parser.add_argument("--target", required=True, help="Target IP address")
+    trace_parser.add_argument("-t", "--timeout", type=float, default=3.0, help="Timeout per hop in seconds (default: 3)")
+    trace_parser.add_argument("--max-hops", type=int, default=30, help="Maximum number of hops (default: 30)")
 
     return parser
 
@@ -398,6 +414,30 @@ def main() -> None:
                 output=args.output,
             )
             grapher.run()
+
+        elif args.scan_method == "trace":
+            print(f"Tracing route to {args.target}, max {args.max_hops} hops\n")
+
+            def _fmt_hop(hop: "Hop") -> str:
+                if hop.ip is None:
+                    return f"{hop.ttl:>3}  *"
+                return f"{hop.ttl:>3}  {hop.ip:<18} {hop.rtt_ms:.2f} ms"
+
+            on_hop = None if args.json else lambda h: print(_fmt_hop(h))
+            scanner = Traceroute(
+                verbose=args.verbose,
+                ip=args.target,
+                timeout=args.timeout,
+                max_hops=args.max_hops,
+                on_hop=on_hop,
+            )
+            scanner.scan()
+
+            if args.json:
+                print(json.dumps({"target": args.target, "hops": [
+                    {"ttl": h.ttl, "ip": h.ip, "rtt_ms": h.rtt_ms}
+                    for h in scanner.get_results()
+                ]}))
 
         elif args.scan_method == "mdns":
             print(f"Browsing mDNS services for {args.timeout}s ...", end=" ", flush=True)
