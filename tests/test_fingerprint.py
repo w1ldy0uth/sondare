@@ -1,4 +1,4 @@
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, call
 from sondare.services.fingerprint import OsFingerprinter, _initial_ttl, _guess_os
 from sondare.models import Fingerprint
 
@@ -75,18 +75,28 @@ class TestOsFingerprinter:
     def test_no_response_returns_none(self):
         with patch("sondare.services.fingerprint.sr1", return_value=None), \
              patch("sondare.services.fingerprint.warm_arp_cache"):
-            scanner = OsFingerprinter(verbose=False, ip="192.168.1.1", port=80, timeout=1)
+            scanner = OsFingerprinter(verbose=False, ip="192.168.1.1", port=80, timeout=1,
+                                      icmp_fallback=False)
             scanner.scan()
 
         assert scanner.get_results() is None
 
     def test_rst_does_not_produce_fingerprint(self):
-        with patch("sondare.services.fingerprint.sr1", return_value=_rst()), \
+        # RST is definitive — no retry, falls straight to ICMP (which also returns None here)
+        with patch("sondare.services.fingerprint.sr1", side_effect=[_rst(), None]), \
              patch("sondare.services.fingerprint.warm_arp_cache"):
             scanner = OsFingerprinter(verbose=False, ip="10.0.0.1", port=80, timeout=1)
             scanner.scan()
 
         assert scanner.get_results() is None
+
+    def test_rst_does_not_trigger_retry(self):
+        with patch("sondare.services.fingerprint.sr1", side_effect=[_rst(), None]) as mock_sr1, \
+             patch("sondare.services.fingerprint.warm_arp_cache"):
+            scanner = OsFingerprinter(verbose=False, ip="10.0.0.1", port=80, timeout=1)
+            scanner.scan()
+        # exactly 2 calls: RST (no retry) + ICMP probe
+        assert mock_sr1.call_count == 2
 
     def test_auto_probe_uses_common_ports_in_parallel(self):
         # Patch to two ports so both are probed; first SYN-ACK wins.
@@ -124,6 +134,55 @@ class TestOsFingerprinter:
     def test_returns_none_before_scan(self):
         scanner = OsFingerprinter(verbose=False, ip="10.0.0.1", port=80, timeout=1)
         assert scanner.get_results() is None
+
+    def test_timeout_triggers_retry(self):
+        # First sr1 call times out; second (retry) also times out; ICMP also times out.
+        with patch("sondare.services.fingerprint.sr1", return_value=None) as mock_sr1, \
+             patch("sondare.services.fingerprint.warm_arp_cache"):
+            scanner = OsFingerprinter(verbose=False, ip="10.0.0.1", port=80, timeout=1)
+            scanner.scan()
+        # port probe × 2 (retry) + 1 ICMP = 3 total calls
+        assert mock_sr1.call_count == 3
+        assert scanner.get_results() is None
+
+    def test_icmp_fallback_when_no_tcp_response(self):
+        icmp_pkt = MagicMock()
+        icmp_pkt.haslayer.return_value = True
+        ip_layer = MagicMock()
+        ip_layer.ttl = 63
+        icmp_pkt.getlayer.return_value = ip_layer
+
+        # None × 2 (port probe + retry) then icmp_pkt
+        with patch("sondare.services.fingerprint.sr1", side_effect=[None, None, icmp_pkt]), \
+             patch("sondare.services.fingerprint.warm_arp_cache"):
+            scanner = OsFingerprinter(verbose=False, ip="10.0.0.1", port=80, timeout=1)
+            scanner.scan()
+
+        result = scanner.get_results()
+        assert result is not None
+        assert result.os == "Linux / Unix"
+        assert result.ttl == 63
+        assert result.window == 0
+
+    def test_icmp_fallback_disabled_returns_none(self):
+        with patch("sondare.services.fingerprint.sr1", return_value=None), \
+             patch("sondare.services.fingerprint.warm_arp_cache"):
+            scanner = OsFingerprinter(verbose=False, ip="10.0.0.1", port=80, timeout=1,
+                                      icmp_fallback=False)
+            scanner.scan()
+
+        assert scanner.get_results() is None
+
+    def test_icmp_fallback_skipped_when_tcp_succeeds(self):
+        with patch("sondare.services.fingerprint.sr1", return_value=_syn_ack(64, 65535)) as mock_sr1, \
+             patch("sondare.services.fingerprint.sr"), \
+             patch("sondare.services.fingerprint.warm_arp_cache"):
+            scanner = OsFingerprinter(verbose=False, ip="10.0.0.1", port=80, timeout=1)
+            scanner.scan()
+
+        result = scanner.get_results()
+        assert result is not None
+        assert result.window == 65535  # TCP-derived, not ICMP fallback
 
     def test_sends_rst_after_syn_ack(self):
         with patch("sondare.services.fingerprint.sr1", return_value=_syn_ack(64, 29200)), \

@@ -4,7 +4,7 @@
 import random
 import threading
 import time
-from scapy.all import IP, TCP, sr1, sr
+from scapy.all import IP, TCP, ICMP, sr1, sr
 from sondare.models import Fingerprint
 from sondare.utils.network import warm_arp_cache
 from sondare.utils.adaptive_pool import AdaptivePool
@@ -40,22 +40,21 @@ def _guess_os(ttl: int, window: int) -> str:
 
 
 class OsFingerprinter:
-    """Guesses the OS of a host by analysing a TCP SYN-ACK response."""
+    """Guesses the OS of a host by analysing a TCP SYN-ACK response, with optional ICMP TTL fallback."""
 
-    def __init__(self, verbose: bool, ip: str, port: int | None, timeout: float) -> None:
+    def __init__(self, verbose: bool, ip: str, port: int | None, timeout: float, icmp_fallback: bool = True) -> None:
         self.verbose = verbose
         self.ip = ip
         self.port = port
+        self._icmp_fallback = icmp_fallback
+        self._timeout = timeout
         self._pool = AdaptivePool(max_threads=len(_COMMON_PORTS), timeout=timeout)
         self._result: Fingerprint | None = None
         self._lock = threading.Lock()
         self._found = threading.Event()
 
-    def _probe(self, port: int) -> None:
-        """Sends a single SYN probe; records the fingerprint on SYN-ACK."""
-        if self._found.is_set():
-            return
-        sport = random.randint(1025, 65534)
+    def _syn_probe(self, sport: int, port: int) -> object:
+        """Sends one SYN packet, updates the pool, and returns the response or None."""
         self._pool.acquire()
         try:
             start = time.monotonic()
@@ -67,9 +66,24 @@ class OsFingerprinter:
             )
         finally:
             self._pool.release()
-
         elapsed = time.monotonic() - start
         self._pool.record(is_timeout=(rsp is None), rtt=elapsed if rsp is not None else None)
+        return rsp
+
+    def _probe(self, port: int) -> None:
+        """Sends a SYN probe with one retry on timeout; records fingerprint on SYN-ACK.
+
+        RST is a definitive closed-port signal and is never retried. The retry
+        only fires on timeout, which can be caused by transient packet loss when
+        multiple hosts are fingerprinted concurrently (e.g. graph mode).
+        """
+        if self._found.is_set():
+            return
+        sport = random.randint(1025, 65534)
+
+        rsp = self._syn_probe(sport, port)
+        if rsp is None and not self._found.is_set():
+            rsp = self._syn_probe(sport, port)
 
         if rsp is None or not rsp.haslayer(TCP):
             return
@@ -91,8 +105,26 @@ class OsFingerprinter:
             )
             self._found.set()
 
+    def _icmp_probe(self) -> None:
+        """Sends one ICMP echo and records OS from TTL alone (window=0 indicates ICMP-derived)."""
+        pkt = sr1(
+            IP(dst=self.ip) / ICMP(),
+            timeout=self._timeout,
+            verbose=self.verbose,
+            promisc=False,
+        )
+        if pkt is not None and pkt.haslayer(IP):
+            ttl = pkt.getlayer(IP).ttl
+            self._result = Fingerprint(
+                ip=self.ip,
+                os=_guess_os(ttl, 0),
+                ttl=ttl,
+                window=0,
+            )
+
     def scan(self) -> None:
-        """Probes all ports in parallel; fingerprints on the first SYN-ACK."""
+        """Probes all ports in parallel; fingerprints on the first SYN-ACK.
+        Falls back to ICMP TTL when no TCP port responds (unless icmp_fallback=False)."""
         warm_arp_cache(self.ip)
         ports = [self.port] if self.port is not None else _COMMON_PORTS
         threads = [
@@ -103,6 +135,8 @@ class OsFingerprinter:
             t.start()
         for t in threads:
             t.join()
+        if self._result is None and self._icmp_fallback:
+            self._icmp_probe()
 
     def get_results(self) -> Fingerprint | None:
         """Returns the fingerprint, or None if no SYN-ACK was received."""

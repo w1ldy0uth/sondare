@@ -9,7 +9,7 @@ import threading
 from datetime import datetime
 from importlib.resources import files as _res_files
 
-from scapy.all import ARP, Ether, IP, ICMP, srp, sr1, conf
+from scapy.all import ARP, Ether, srp, conf
 from sondare.models import Host
 from sondare.services.fingerprint import OsFingerprinter
 from sondare.utils.network import get_subnet, get_network_interface, get_ip_address
@@ -170,13 +170,6 @@ class NetworkGraph:
         )[0]
         return [Host(ip=rcv.psrc, mac=rcv.hwsrc) for _, rcv in ans]
 
-    @staticmethod
-    def _ttl_to_os(ttl: int) -> str:
-        for threshold, label in ((64, "Linux / Unix"), (128, "Windows"), (255, "Cisco / Network Device")):
-            if ttl <= threshold:
-                return label
-        return "Cisco / Network Device"
-
     def _fingerprint_hosts(self, ips: list[str]) -> None:
         lock = threading.Lock()
         sem = threading.Semaphore(self._threads)
@@ -191,17 +184,6 @@ class NetworkGraph:
                 if result:
                     with lock:
                         self._os_map[ip] = result.os
-                    return
-                # TCP failed (no open port) — fall back to ICMP TTL
-                pkt = sr1(
-                    IP(dst=ip) / ICMP(),
-                    timeout=self._timeout,
-                    verbose=self._verbose,
-                    promisc=False,
-                )
-                if pkt and pkt.haslayer(IP):
-                    with lock:
-                        self._os_map[ip] = self._ttl_to_os(pkt.getlayer(IP).ttl)
             except Exception:
                 pass
             finally:
