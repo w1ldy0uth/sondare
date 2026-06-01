@@ -7,6 +7,7 @@ import platform
 import subprocess
 import threading
 from datetime import datetime
+from importlib.resources import files as _res_files
 
 from scapy.all import ARP, Ether, IP, ICMP, srp, sr1, conf
 from sondare.models import Host
@@ -19,7 +20,7 @@ _HTML_TEMPLATE = """\
 <head>
 <meta charset="utf-8">
 <title>sondare — Network Graph</title>
-<script src="https://unpkg.com/vis-network@9.1.9/dist/vis-network.min.js"></script>
+<script>VIS_NETWORK_JS</script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { background: #0d1117; color: #c9d1d9; font-family: 'Courier New', monospace; }
@@ -98,6 +99,10 @@ const network = new vis.Network(document.getElementById('graph'), { nodes, edges
 """
 
 
+def _load_vis_network() -> str:
+    return _res_files("sondare").joinpath("static/vis-network.min.js").read_text(encoding="utf-8")
+
+
 def _get_gateway() -> str | None:
     """Returns the default gateway IP scoped to the physical network interface."""
     _SKIP = {"0.0.0.0", "127.0.0.1"}
@@ -134,7 +139,7 @@ def _get_gateway() -> str | None:
 class NetworkGraph:
     """
     Discovers hosts via ARP, optionally fingerprints their OS, then renders
-    an interactive HTML network graph using vis-network (loaded from CDN).
+    an interactive HTML network graph using vis-network (bundled, no CDN needed).
     """
 
     def __init__(
@@ -301,6 +306,7 @@ class NetworkGraph:
             host_count = len(nodes)
             html = (
                 _HTML_TEMPLATE
+                .replace("VIS_NETWORK_JS", _load_vis_network())
                 .replace("NODES_JSON", json.dumps(nodes))
                 .replace("EDGES_JSON", json.dumps(edges))
                 .replace("SUBNET", subnet)

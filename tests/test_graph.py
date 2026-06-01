@@ -134,36 +134,40 @@ class TestBuildGraph:
         assert len(gateway_nodes) == 1
 
 
+_VIS_STUB = "/* vis-network stub */"
+_HTML_PATCHES = (
+    patch("sondare.services.graph._load_vis_network", return_value=_VIS_STUB),
+)
+
+
+def _html_run(g, tmp_path_or_out):
+    """Runs g.run() with all network and vis-network calls patched."""
+    out = tmp_path_or_out if isinstance(tmp_path_or_out, str) else str(tmp_path_or_out / "graph.html")
+    with patch.object(g, "_arp_scan", return_value=_hosts()), \
+         patch("sondare.services.graph._get_gateway", return_value="192.168.1.1"), \
+         patch("sondare.services.graph.get_ip_address", return_value="192.168.1.10"), \
+         patch("sondare.services.graph.get_subnet", return_value="192.168.1.0/24"), \
+         patch("sondare.services.graph._load_vis_network", return_value=_VIS_STUB):
+        return g.run(), out
+
+
 class TestRun:
     def test_writes_html_file(self, tmp_path):
         out = str(tmp_path / "graph.html")
         g = _grapher(output=out)
-        with patch.object(g, "_arp_scan", return_value=_hosts()), \
-             patch("sondare.services.graph._get_gateway", return_value="192.168.1.1"), \
-             patch("sondare.services.graph.get_ip_address", return_value="192.168.1.10"), \
-             patch("sondare.services.graph.get_subnet", return_value="192.168.1.0/24"):
-            g.run()
+        _html_run(g, out)
         assert open(out).read().startswith("<!DOCTYPE html>")
 
     def test_html_contains_node_data(self, tmp_path):
         out = str(tmp_path / "graph.html")
         g = _grapher(output=out)
-        with patch.object(g, "_arp_scan", return_value=_hosts()), \
-             patch("sondare.services.graph._get_gateway", return_value="192.168.1.1"), \
-             patch("sondare.services.graph.get_ip_address", return_value="192.168.1.10"), \
-             patch("sondare.services.graph.get_subnet", return_value="192.168.1.0/24"):
-            g.run()
-        content = open(out).read()
-        assert "192.168.1.20" in content
+        _html_run(g, out)
+        assert "192.168.1.20" in open(out).read()
 
     def test_returns_output_path(self, tmp_path):
         out = str(tmp_path / "graph.html")
         g = _grapher(output=out)
-        with patch.object(g, "_arp_scan", return_value=_hosts()), \
-             patch("sondare.services.graph._get_gateway", return_value="192.168.1.1"), \
-             patch("sondare.services.graph.get_ip_address", return_value="192.168.1.10"), \
-             patch("sondare.services.graph.get_subnet", return_value="192.168.1.0/24"):
-            result = g.run()
+        result, _ = _html_run(g, out)
         assert result == out
 
     def test_fingerprint_called_when_enabled(self, tmp_path):
@@ -173,7 +177,8 @@ class TestRun:
              patch.object(g, "_fingerprint_hosts") as mock_fp, \
              patch("sondare.services.graph._get_gateway", return_value="192.168.1.1"), \
              patch("sondare.services.graph.get_ip_address", return_value="192.168.1.10"), \
-             patch("sondare.services.graph.get_subnet", return_value="192.168.1.0/24"):
+             patch("sondare.services.graph.get_subnet", return_value="192.168.1.0/24"), \
+             patch("sondare.services.graph._load_vis_network", return_value=_VIS_STUB):
             g.run()
         mock_fp.assert_called_once()
 
@@ -184,9 +189,18 @@ class TestRun:
              patch.object(g, "_fingerprint_hosts") as mock_fp, \
              patch("sondare.services.graph._get_gateway", return_value="192.168.1.1"), \
              patch("sondare.services.graph.get_ip_address", return_value="192.168.1.10"), \
-             patch("sondare.services.graph.get_subnet", return_value="192.168.1.0/24"):
+             patch("sondare.services.graph.get_subnet", return_value="192.168.1.0/24"), \
+             patch("sondare.services.graph._load_vis_network", return_value=_VIS_STUB):
             g.run()
         mock_fp.assert_not_called()
+
+    def test_vis_network_inlined_no_cdn(self, tmp_path):
+        out = str(tmp_path / "graph.html")
+        g = _grapher(output=out)
+        _html_run(g, out)
+        content = open(out).read()
+        assert "unpkg.com" not in content
+        assert _VIS_STUB in content
 
 
 class TestBuildTopology:
