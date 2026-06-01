@@ -361,14 +361,22 @@ def main() -> None:
             result = scanner.get_results()
 
             if result is None:
-                print("No SYN-ACK received — could not fingerprint host.")
+                print("No response — could not fingerprint host.")
             elif args.json:
-                print(json.dumps({"ip": result.ip, "os": result.os, "ttl": result.ttl, "window": result.window}))
+                print(json.dumps({
+                    "ip": result.ip,
+                    "os": result.os,
+                    "ttl": result.ttl,
+                    "window": result.window,
+                    "source": result.source,
+                }))
             else:
+                src_label = "ICMP" if result.source == "icmp" else "TCP SYN-ACK"
                 print(f"IP:     {result.ip}")
-                print(f"OS:     {result.os}")
+                print(f"OS:     {result.os}  [{src_label}]")
                 print(f"TTL:    {result.ttl}")
-                print(f"Window: {result.window}")
+                if result.source == "tcp":
+                    print(f"Window: {result.window}")
 
         elif args.scan_method == "udp":
             target: Target = args.target or parse_target(network.get_ip_address())

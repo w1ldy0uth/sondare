@@ -12,14 +12,8 @@ from sondare.utils.adaptive_pool import AdaptivePool
 # Ports tried in parallel when no specific port is given.
 _COMMON_PORTS = [80, 443, 22, 8080, 21, 25, 3389, 445, 23, 53]
 
-# Window sizes that map to a specific OS within the Linux/Unix TTL bucket.
-_WINDOW_OS: dict[int, str] = {
-    65535: "macOS / iOS / FreeBSD",
-    29200: "Linux",
-    14600: "Linux",
-     5840: "Linux",
-    32768: "Linux / Unix",
-}
+# Window sizes that unambiguously identify Linux variants (within the TTL ≤ 64 bucket).
+_LINUX_WINDOWS: frozenset[int] = frozenset({29200, 14600, 5840})
 
 
 def _initial_ttl(received: int) -> int:
@@ -30,13 +24,53 @@ def _initial_ttl(received: int) -> int:
     return 255
 
 
-def _guess_os(ttl: int, window: int) -> str:
+def _parse_tcp_options(options) -> dict:
+    """Extracts MSS, window-scale, timestamps, and SACK from a scapy TCP options list."""
+    result: dict = {"mss": None, "wscale": None, "timestamps": False, "sack": False}
+    for opt in (options or []):
+        name = opt[0] if isinstance(opt, (list, tuple)) else opt
+        val  = opt[1] if isinstance(opt, (list, tuple)) and len(opt) > 1 else None
+        if name == "MSS":
+            result["mss"] = val
+        elif name == "WScale":
+            result["wscale"] = val
+        elif name == "Timestamp":
+            result["timestamps"] = True
+        elif name in ("SAckOK", "SACK"):
+            result["sack"] = True
+    return result
+
+
+def _guess_os(ttl: int, window: int, tcp_opts: dict | None = None) -> str:
+    """Infers OS from TTL bucket, TCP window size, and optional TCP option signals."""
     initial = _initial_ttl(ttl)
-    if initial <= 64:
-        return _WINDOW_OS.get(window, "Linux / Unix")
-    if initial <= 128:
+    opts   = tcp_opts or {}
+    has_ts = opts.get("timestamps", False)
+    wscale = opts.get("wscale")
+
+    if initial > 128:
+        return "Cisco / Network Device"
+
+    if initial > 64:
+        # Default Windows territory; timestamps disambiguate misclassified Linux hosts.
+        if has_ts:
+            return "Linux / Unix"
+        if window == 64240:
+            return "Windows 10 / 11"
         return "Windows"
-    return "Cisco / Network Device"
+
+    # TTL ≤ 64: Linux / macOS / FreeBSD / iOS territory.
+    if window in _LINUX_WINDOWS:
+        return "Linux"
+    if window == 32768:
+        return "Linux / Unix"
+    if window == 65535:
+        if has_ts and wscale == 6:
+            return "macOS / iOS"
+        if has_ts:
+            return "macOS / FreeBSD"
+        return "macOS / iOS / FreeBSD"  # no options signal — keep broad
+    return "Linux / Unix"
 
 
 class OsFingerprinter:
@@ -96,12 +130,14 @@ class OsFingerprinter:
                 IP(dst=self.ip) / TCP(sport=sport, dport=port, flags="R"),
                 timeout=1, verbose=False, promisc=False,
             )
-            tcp = rsp.getlayer(TCP)
+            tcp  = rsp.getlayer(TCP)
+            opts = _parse_tcp_options(tcp.options)
             self._result = Fingerprint(
                 ip=self.ip,
-                os=_guess_os(rsp.getlayer(IP).ttl, tcp.window),
+                os=_guess_os(rsp.getlayer(IP).ttl, tcp.window, opts),
                 ttl=rsp.getlayer(IP).ttl,
                 window=tcp.window,
+                source="tcp",
             )
             self._found.set()
 
@@ -120,6 +156,7 @@ class OsFingerprinter:
                 os=_guess_os(ttl, 0),
                 ttl=ttl,
                 window=0,
+                source="icmp",
             )
 
     def scan(self) -> None:

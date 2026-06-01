@@ -23,6 +23,7 @@ class Fingerprint(NamedTuple):
     os: str
     ttl: int
     window: int
+    source: str = "tcp"  # "tcp" or "icmp"
 
 
 class MdnsRecord(NamedTuple):
