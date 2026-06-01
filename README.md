@@ -4,7 +4,7 @@
 [![Python](https://img.shields.io/pypi/pyversions/sondare)](https://pypi.org/project/sondare/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-> *From italian: <u>sonda</u> di <u>re</u>te - network probe*
+> *From italian: sonda di rete - network probe*
 
 ## About
 
