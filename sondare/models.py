@@ -38,3 +38,16 @@ class Hop(NamedTuple):
     ttl: int
     ip: str | None       # None when the hop did not respond
     rtt_ms: float | None # None when the hop did not respond
+
+
+class TlsCert(NamedTuple):
+    """TLS/SSL certificate details from a probed host."""
+    ip: str
+    port: int
+    cn: str | None
+    issuer: str | None
+    not_before: str          # ISO 8601
+    not_after: str           # ISO 8601
+    san: tuple[str, ...]     # DNS Subject Alternative Names
+    expired: bool
+    self_signed: bool

@@ -21,6 +21,7 @@ from sondare.services.fingerprint import OsFingerprinter
 from sondare.services.graph import NetworkGraph
 from sondare.services.mdns import Mdns
 from sondare.services.trace import Traceroute
+from sondare.services.tls import TlsProber, DEFAULT_PORTS as _TLS_DEFAULT_PORTS
 from sondare.monitors.arp_watcher import ArpWatcher
 from sondare.monitors.hosts_watcher import HostsWatcher
 from sondare.monitors.port_watcher import PortWatcher
@@ -55,6 +56,20 @@ def parse_target(value: str) -> Target:
     if end > 65535:
         raise argparse.ArgumentTypeError(f"Port {end} out of range (1-65535).")
     return Target(ip, start, end)
+
+
+def _parse_tls_target(value: str) -> tuple[str, tuple[int, ...]]:
+    """Parses 'ip' or 'ip:port' into (ip, ports). Defaults to DEFAULT_PORTS when no port given."""
+    m = re.fullmatch(r"([^:]+)(?::(\d+))?", value)
+    if not m:
+        raise argparse.ArgumentTypeError(f"Invalid target: '{value}'")
+    ip = m.group(1)
+    if m.group(2) is not None:
+        port = int(m.group(2))
+        if not (1 <= port <= 65535):
+            raise argparse.ArgumentTypeError(f"Port {port} out of range (1-65535).")
+        return ip, (port,)
+    return ip, _TLS_DEFAULT_PORTS
 
 
 def _fmt_port_range(begin: int, end: int) -> str:
@@ -150,6 +165,12 @@ trace:
   --json            JSON output
 
 Note: trace uses ICMP echo probes. Hosts that block ICMP will show * for all hops.
+
+tls:
+  --target          Target as ip or ip:port (default ports: 443, 8443)
+  -t, --timeout     Connection timeout in seconds (default: 5)
+  -v, --verbose     Verbose mode
+  --json            JSON output
         """
     )
 
@@ -216,6 +237,11 @@ Note: trace uses ICMP echo probes. Hosts that block ICMP will show * for all hop
     graph_parser.add_argument("-th", "--threads", type=int, default=10, help="Concurrent fingerprint probes (default: 10)")
     graph_parser.add_argument("--fingerprint", action="store_true", help="OS-fingerprint each discovered host")
     graph_parser.add_argument("-o", "--output", default="sondare_graph.html", help="Output file path (default: sondare_graph.html)")
+
+    # TLS probe
+    tls_parser = subparsers.add_parser("tls", parents=[shared], help="Probe TLS/SSL certificate details on a target host.")
+    tls_parser.add_argument("--target", required=True, help="Target as ip or ip:port (default ports: 443, 8443)")
+    tls_parser.add_argument("-t", "--timeout", type=float, default=5.0, help="Connection timeout in seconds (default: 5)")
 
     # mDNS scan
     mdns_parser = subparsers.add_parser("mdns", parents=[shared], help="Discover mDNS/Bonjour services on the local network.")
@@ -438,6 +464,45 @@ def main() -> None:
                     {"ttl": h.ttl, "ip": h.ip, "rtt_ms": h.rtt_ms}
                     for h in scanner.get_results()
                 ]}))
+
+        elif args.scan_method == "tls":
+            ip, ports = _parse_tls_target(args.target)
+            port_label = ",".join(str(p) for p in ports)
+            print(f"Probing TLS on {ip}:{port_label} ...")
+            prober = TlsProber(ip=ip, ports=ports, timeout=args.timeout)
+            prober.scan()
+            results = prober.get_results()
+
+            if not results:
+                print("No TLS certificates found.")
+            elif args.json:
+                print(json.dumps({"certs": [
+                    {
+                        "ip": c.ip,
+                        "port": c.port,
+                        **({"cn": c.cn} if c.cn else {}),
+                        **({"issuer": c.issuer} if c.issuer else {}),
+                        "not_before": c.not_before,
+                        "not_after": c.not_after,
+                        "san": list(c.san),
+                        "expired": c.expired,
+                        "self_signed": c.self_signed,
+                    }
+                    for c in results
+                ]}))
+            else:
+                for cert in results:
+                    print(f"\nPort:        {cert.port}")
+                    if cert.cn:
+                        print(f"CN:          {cert.cn}")
+                    if cert.issuer:
+                        print(f"Issuer:      {cert.issuer}")
+                    print(f"Valid from:  {cert.not_before}")
+                    print(f"Valid to:    {cert.not_after}")
+                    print(f"Expired:     {'Yes' if cert.expired else 'No'}")
+                    print(f"Self-signed: {'Yes' if cert.self_signed else 'No'}")
+                    if cert.san:
+                        print(f"SANs:        {', '.join(cert.san)}")
 
         elif args.scan_method == "mdns":
             print(f"Browsing mDNS services for {args.timeout}s ...", end=" ", flush=True)

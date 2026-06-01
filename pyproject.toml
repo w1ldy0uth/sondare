@@ -18,6 +18,7 @@ dependencies = [
     "scapy>=2.4.5",
     "psutil>=5.9.5",
     "zeroconf>=0.38.0",
+    "cryptography>=41.0",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",

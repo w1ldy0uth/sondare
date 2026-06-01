@@ -15,6 +15,7 @@
 - **TCP** — performs a SYN scan on a target host to find open ports; optionally grabs service banners
 - **UDP** — probes UDP ports; reports open (got a UDP reply) or open|filtered (no response) ports
 - **OS fingerprinting** — guesses the OS of a host by analysing TTL and TCP window size in a SYN-ACK response
+- **TLS/SSL probing** — extracts certificate details (CN, issuer, validity, SANs) from HTTPS ports; flags expired and self-signed certs
 - **Hostname resolution** — resolves hostnames via mDNS service browse, SSDP/UPnP, NetBIOS, and PTR records
 
 ## Requirements
@@ -64,6 +65,7 @@ sudo sondare <command> [options]
 | `graph` | Generate an interactive HTML network graph of the local subnet |
 | `mdns` | Discover mDNS/Bonjour services on the local network |
 | `trace` | Trace the network path to a target host |
+| `tls` | Probe TLS/SSL certificate details on a target host |
 
 ### Examples
 
@@ -140,11 +142,18 @@ sudo sondare mdns
 # Browse for longer to catch slower devices
 sudo sondare mdns -t 10
 
+# Probe TLS certificate on common HTTPS ports (443 and 8443)
+sudo sondare tls --target 192.168.1.1
+
+# Probe a specific port
+sudo sondare tls --target 192.168.1.1:8443
+
 # Output results as JSON (supported by all scan commands)
 sudo sondare arp --json
 sudo sondare ping --json
 sudo sondare tcp --target 192.168.1.1:1-1024 --banners --json
 sudo sondare mdns --json
+sudo sondare tls --target 192.168.1.1 --json
 ```
 
 ### Options
@@ -223,6 +232,12 @@ trace:
   -t, --timeout     Timeout per hop in seconds (default: 3)
   --max-hops        Maximum number of hops (default: 30)
   -v, --verbose     Verbose scapy output
+  --json            JSON output
+
+tls:
+  --target          Target as ip or ip:port (default ports: 443, 8443)
+  -t, --timeout     Connection timeout in seconds (default: 5)
+  -v, --verbose     Verbose mode
   --json            JSON output
 ```
 
