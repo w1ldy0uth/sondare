@@ -147,7 +147,7 @@ monitor traffic:
 
 graph:
   --fingerprint     OS-fingerprint each discovered host
-  -o, --output      Output file path (default: sondare_graph.html)
+  -o, --output      Output path: .html for interactive graph, .json for topology data (default: sondare_graph.html)
   -t, --timeout     ARP scan timeout in seconds (default: 3)
   -th, --threads    Concurrent fingerprint probes (default: 10)
   -v, --verbose     Verbose scapy output
@@ -236,7 +236,7 @@ tls:
     graph_parser.add_argument("-t", "--timeout", type=float, default=3.0, help="ARP scan timeout in seconds (default: 3)")
     graph_parser.add_argument("-th", "--threads", type=int, default=10, help="Concurrent fingerprint probes (default: 10)")
     graph_parser.add_argument("--fingerprint", action="store_true", help="OS-fingerprint each discovered host")
-    graph_parser.add_argument("-o", "--output", default="sondare_graph.html", help="Output file path (default: sondare_graph.html)")
+    graph_parser.add_argument("-o", "--output", default="sondare_graph.html", help="Output path: .html for interactive graph, .json for topology data (default: sondare_graph.html)")
 
     # TLS probe
     tls_parser = subparsers.add_parser("tls", parents=[shared], help="Probe TLS/SSL certificate details on a target host.")

@@ -211,6 +211,36 @@ class NetworkGraph:
         for t in threads:
             t.join()
 
+    def _build_topology(
+        self, gateway: str | None, local_ip: str, subnet: str, scan_time: str
+    ) -> dict:
+        mac_lookup = {h.ip: h.mac for h in self._hosts}
+        all_ips = {h.ip for h in self._hosts} | {local_ip}
+        if gateway:
+            all_ips.add(gateway)
+
+        def _role(ip: str) -> str:
+            if ip == gateway:
+                return "gateway"
+            if ip == local_ip:
+                return "local"
+            return "host"
+
+        hosts = []
+        for ip in sorted(all_ips):
+            entry: dict = {"ip": ip, "mac": mac_lookup.get(ip, "unknown"), "role": _role(ip)}
+            if ip in self._os_map:
+                entry["os"] = self._os_map[ip]
+            hosts.append(entry)
+
+        return {
+            "subnet": subnet,
+            "gateway": gateway,
+            "local_ip": local_ip,
+            "scan_time": scan_time,
+            "hosts": hosts,
+        }
+
     def _build_graph(
         self, gateway: str | None, local_ip: str
     ) -> tuple[list[dict], list[dict]]:
@@ -259,21 +289,26 @@ class NetworkGraph:
         if self._fingerprint and self._hosts:
             self._fingerprint_hosts([h.ip for h in self._hosts])
 
-        nodes, edges = self._build_graph(gateway, local_ip)
         scan_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        host_count = len(nodes)
 
-        html = (
-            _HTML_TEMPLATE
-            .replace("NODES_JSON", json.dumps(nodes))
-            .replace("EDGES_JSON", json.dumps(edges))
-            .replace("SUBNET", subnet)
-            .replace("HOST_COUNT", str(host_count))
-            .replace("SCAN_TIME", scan_time)
-        )
+        if self._output.endswith(".json"):
+            topology = self._build_topology(gateway, local_ip, subnet, scan_time)
+            with open(self._output, "w", encoding="utf-8") as f:
+                json.dump(topology, f, indent=2)
+            print(f"Network topology saved in {os.path.abspath(self._output)}")
+        else:
+            nodes, edges = self._build_graph(gateway, local_ip)
+            host_count = len(nodes)
+            html = (
+                _HTML_TEMPLATE
+                .replace("NODES_JSON", json.dumps(nodes))
+                .replace("EDGES_JSON", json.dumps(edges))
+                .replace("SUBNET", subnet)
+                .replace("HOST_COUNT", str(host_count))
+                .replace("SCAN_TIME", scan_time)
+            )
+            with open(self._output, "w", encoding="utf-8") as f:
+                f.write(html)
+            print(f"Network graph saved in {os.path.abspath(self._output)}")
 
-        with open(self._output, "w", encoding="utf-8") as f:
-            f.write(html)
-
-        print(f"Network graph saved in {os.path.abspath(self._output)}")
         return self._output

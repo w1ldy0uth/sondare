@@ -130,6 +130,9 @@ sudo sondare graph --fingerprint
 # Save to a custom path
 sudo sondare graph -o /tmp/my_network.html
 
+# Save as structured JSON topology instead of HTML
+sudo sondare graph -o topology.json
+
 # Trace the network path to a host
 sudo sondare trace --target 8.8.8.8
 
@@ -217,7 +220,7 @@ monitor traffic:
 
 graph:
   --fingerprint     OS-fingerprint each discovered host (TCP SYN, falls back to ICMP TTL)
-  -o, --output      Output file path (default: sondare_graph.html)
+  -o, --output      Output path: .html for interactive graph, .json for topology data (default: sondare_graph.html)
   -t, --timeout     ARP scan timeout in seconds (default: 3)
   -th, --threads    Concurrent fingerprint probes (default: 10)
   -v, --verbose     Verbose scapy output

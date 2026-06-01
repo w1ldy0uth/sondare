@@ -1,3 +1,4 @@
+import json
 from unittest.mock import patch, MagicMock
 from sondare.services.graph import NetworkGraph, _get_gateway
 from sondare.models import Host
@@ -186,3 +187,96 @@ class TestRun:
              patch("sondare.services.graph.get_subnet", return_value="192.168.1.0/24"):
             g.run()
         mock_fp.assert_not_called()
+
+
+class TestBuildTopology:
+    def test_structure_keys(self):
+        g = _grapher()
+        g._hosts = _hosts()
+        topo = g._build_topology(gateway="192.168.1.1", local_ip="192.168.1.10",
+                                  subnet="192.168.1.0/24", scan_time="2026-06-01 12:00:00")
+        assert set(topo.keys()) == {"subnet", "gateway", "local_ip", "scan_time", "hosts"}
+
+    def test_gateway_role(self):
+        g = _grapher()
+        g._hosts = _hosts()
+        topo = g._build_topology("192.168.1.1", "192.168.1.10", "192.168.1.0/24", "t")
+        gw = next(h for h in topo["hosts"] if h["ip"] == "192.168.1.1")
+        assert gw["role"] == "gateway"
+
+    def test_local_role(self):
+        g = _grapher()
+        g._hosts = _hosts()
+        topo = g._build_topology("192.168.1.1", "192.168.1.10", "192.168.1.0/24", "t")
+        local = next(h for h in topo["hosts"] if h["ip"] == "192.168.1.10")
+        assert local["role"] == "local"
+
+    def test_regular_host_role(self):
+        g = _grapher()
+        g._hosts = _hosts()
+        topo = g._build_topology("192.168.1.1", "192.168.1.10", "192.168.1.0/24", "t")
+        host = next(h for h in topo["hosts"] if h["ip"] == "192.168.1.20")
+        assert host["role"] == "host"
+
+    def test_os_included_when_fingerprinted(self):
+        g = _grapher()
+        g._hosts = _hosts()
+        g._os_map["192.168.1.20"] = "Linux / Unix"
+        topo = g._build_topology("192.168.1.1", "192.168.1.10", "192.168.1.0/24", "t")
+        host = next(h for h in topo["hosts"] if h["ip"] == "192.168.1.20")
+        assert host["os"] == "Linux / Unix"
+
+    def test_os_omitted_when_not_fingerprinted(self):
+        g = _grapher()
+        g._hosts = _hosts()
+        topo = g._build_topology("192.168.1.1", "192.168.1.10", "192.168.1.0/24", "t")
+        host = next(h for h in topo["hosts"] if h["ip"] == "192.168.1.20")
+        assert "os" not in host
+
+    def test_no_gateway_sets_none(self):
+        g = _grapher()
+        g._hosts = _hosts()
+        topo = g._build_topology(None, "192.168.1.10", "192.168.1.0/24", "t")
+        assert topo["gateway"] is None
+
+    def test_local_ip_always_present(self):
+        g = _grapher()
+        g._hosts = []  # empty ARP results
+        topo = g._build_topology(None, "192.168.1.10", "192.168.1.0/24", "t")
+        assert any(h["ip"] == "192.168.1.10" for h in topo["hosts"])
+
+
+class TestRunJson:
+    def _run_json(self, tmp_path, fingerprint=False):
+        out = str(tmp_path / "graph.json")
+        g = _grapher(output=out, fingerprint=fingerprint)
+        with patch.object(g, "_arp_scan", return_value=_hosts()), \
+             patch("sondare.services.graph._get_gateway", return_value="192.168.1.1"), \
+             patch("sondare.services.graph.get_ip_address", return_value="192.168.1.10"), \
+             patch("sondare.services.graph.get_subnet", return_value="192.168.1.0/24"):
+            g.run()
+        return json.loads(open(out).read())
+
+    def test_writes_valid_json(self, tmp_path):
+        data = self._run_json(tmp_path)
+        assert isinstance(data, dict)
+
+    def test_json_contains_subnet(self, tmp_path):
+        data = self._run_json(tmp_path)
+        assert data["subnet"] == "192.168.1.0/24"
+
+    def test_json_contains_all_hosts(self, tmp_path):
+        data = self._run_json(tmp_path)
+        ips = {h["ip"] for h in data["hosts"]}
+        assert "192.168.1.1" in ips
+        assert "192.168.1.20" in ips
+
+    def test_html_not_written_for_json_output(self, tmp_path):
+        out = str(tmp_path / "graph.json")
+        g = _grapher(output=out)
+        with patch.object(g, "_arp_scan", return_value=_hosts()), \
+             patch("sondare.services.graph._get_gateway", return_value="192.168.1.1"), \
+             patch("sondare.services.graph.get_ip_address", return_value="192.168.1.10"), \
+             patch("sondare.services.graph.get_subnet", return_value="192.168.1.0/24"):
+            g.run()
+        assert not open(out).read().startswith("<!DOCTYPE html>")
