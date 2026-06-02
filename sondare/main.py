@@ -14,6 +14,7 @@ logging.getLogger("scapy.runtime").setLevel(logging.ERROR)
 import sondare.utils.network as network
 import sondare.utils.root as root
 from sondare.services.arp import Arp
+from sondare.services.ndp import Ndp
 from sondare.services.icmp import Ping
 from sondare.services.tcp import Tcp
 from sondare.services.udp import Udp
@@ -93,8 +94,8 @@ def parse_args() -> argparse.ArgumentParser:
         description=f"sondare {_get_version()} — Probe and monitor local network hosts.",
         formatter_class=argparse.RawTextHelpFormatter,
         epilog="""
-arp / ping:
-  -t, --timeout          Packet timeout in seconds (default: 5)
+arp / ping / ndp:
+  -t, --timeout          Packet timeout in seconds (default: 5 for arp/ping, 3 for ndp)
   --resolve_hostname     Resolve hostnames via mDNS, SSDP, NetBIOS, and PTR
   -v, --verbose          Verbose scapy output
   --json                 JSON output
@@ -182,6 +183,11 @@ tls:
     arp_parser = subparsers.add_parser("arp", parents=[shared], help="Scan local network with ARP packets.")
     arp_parser.add_argument("-t", "--timeout", type=int, default=5, help="Timeout for scan response")
     arp_parser.add_argument("--resolve_hostname", action="store_true", help="Resolve hostnames via PTR lookup")
+
+    # NDP scan
+    ndp_parser = subparsers.add_parser("ndp", parents=[shared], help="Discover IPv6 hosts via Neighbor Discovery Protocol.")
+    ndp_parser.add_argument("-t", "--timeout", type=int, default=3, help="Timeout in seconds (default: 3)")
+    ndp_parser.add_argument("--resolve_hostname", action="store_true", help="Resolve hostnames via PTR lookup")
 
     # Ping scan
     ping_parser = subparsers.add_parser("ping", parents=[shared], help="Ping all hosts in local network with ICMP packets.")
@@ -288,13 +294,45 @@ def main() -> None:
                 ]}))
             else:
                 if args.resolve_hostname:
-                    print("IP".ljust(15) + "HOSTNAME".ljust(30) + "MAC".ljust(20) + "VENDOR")
+                    host_col = max((len(h.hostname or '') for h in results), default=8) + 2
+                    mac_col  = max((len(h.mac) for h in results), default=17) + 2
+                    print("IP".ljust(15) + "HOSTNAME".ljust(host_col) + "MAC".ljust(mac_col) + "VENDOR")
                     for h in results:
-                        print(f"{h.ip.ljust(15)}{(h.hostname or '').ljust(30)}{h.mac.ljust(20)}{h.vendor or ''}")
+                        print(f"{h.ip.ljust(15)}{(h.hostname or '').ljust(host_col)}{h.mac.ljust(mac_col)}{h.vendor or ''}")
                 else:
                     print("IP".ljust(15) + "MAC".ljust(20) + "VENDOR")
                     for h in results:
                         print(f"{h.ip.ljust(15)}{h.mac.ljust(20)}{h.vendor or ''}")
+
+        elif args.scan_method == "ndp":
+            print(f"Running NDP scan with {args.timeout}s timeout")
+            scanner = Ndp(verbose=args.verbose, timeout=args.timeout, resolve_hostname=args.resolve_hostname)
+            scanner.scan()
+            results = scanner.get_results()
+
+            if args.json:
+                print(json.dumps({"hosts": [
+                    {
+                        "ip": h.ip,
+                        "mac": h.mac,
+                        **({"hostname": h.hostname} if args.resolve_hostname else {}),
+                        **({"vendor": h.vendor} if h.vendor else {}),
+                    }
+                    for h in results
+                ]}))
+            else:
+                ip_col = max((len(h.ip) for h in results), default=4) + 2
+                if args.resolve_hostname:
+                    host_col = max((len(h.hostname or '') for h in results), default=8) + 2
+                    mac_col  = max((len(h.mac) for h in results), default=17) + 2
+                    print("IPv6".ljust(ip_col) + "HOSTNAME".ljust(host_col) + "MAC".ljust(mac_col) + "VENDOR")
+                    for h in results:
+                        print(f"{h.ip.ljust(ip_col)}{(h.hostname or '').ljust(host_col)}{h.mac.ljust(mac_col)}{h.vendor or ''}")
+                else:
+                    mac_col = max((len(h.mac) for h in results), default=17) + 2
+                    print("IPv6".ljust(ip_col) + "MAC".ljust(mac_col) + "VENDOR")
+                    for h in results:
+                        print(f"{h.ip.ljust(ip_col)}{h.mac.ljust(mac_col)}{h.vendor or ''}")
 
         elif args.scan_method == "ping":
             print(f"Running ICMP scan on {network.get_network_interface()} with {args.timeout}s timeout")
