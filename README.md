@@ -10,7 +10,8 @@
 
 **sondare** is a Python CLI tool for auditing local networks, built on top of [Scapy](https://scapy.net/). It provides scanning and fingerprinting methods, each running with multithreaded packet dispatch for speed.
 
-- **ARP** — discovers all active hosts on the local subnet (cannot be blocked by firewalls)
+- **ARP** — discovers all active IPv4 hosts on the local subnet (cannot be blocked by firewalls)
+- **NDP** — discovers IPv6 hosts on the local link via ICMPv6 multicast ping + neighbor cache
 - **ICMP** — pings all hosts to check reachability (iOS devices block ICMP by design; use ARP for full discovery)
 - **TCP** — performs a SYN scan on a target host to find open ports; optionally grabs service banners
 - **UDP** — probes UDP ports; reports open (got a UDP reply) or open|filtered (no response) ports
@@ -53,7 +54,8 @@ sudo sondare <command> [options]
 
 | Command | Description |
 | --------- | ------------- |
-| `arp` | ARP scan of the local subnet |
+| `arp` | ARP scan of the local subnet (IPv4) |
+| `ndp` | NDP scan of the local link (IPv6) |
 | `ping` | ICMP scan of the local subnet |
 | `tcp` | TCP SYN port scan of a target host |
 | `udp` | UDP port scan of a target host |
@@ -75,6 +77,15 @@ sudo sondare arp
 
 # Discover hosts and resolve their hostnames (requires PTR records on the network)
 sudo sondare arp --resolve_hostname
+
+# Discover IPv6 hosts on the local link via NDP
+sudo sondare ndp
+
+# NDP scan with a longer timeout (useful on slower networks)
+sudo sondare ndp -t 5
+
+# NDP with hostname resolution
+sudo sondare ndp --resolve_hostname
 
 # Discover live hosts via ICMP with 10s timeout
 sudo sondare ping -t 10
@@ -153,6 +164,7 @@ sudo sondare tls --target 192.168.1.1:8443
 
 # Output results as JSON (supported by all scan commands)
 sudo sondare arp --json
+sudo sondare ndp --json
 sudo sondare ping --json
 sudo sondare tcp --target 192.168.1.1:1-1024 --banners --json
 sudo sondare mdns --json
@@ -171,6 +183,12 @@ arp:
 ping:
   -t, --timeout          Packet timeout in seconds (default: 5)
   --resolve_hostname     Resolve hostnames via mDNS, SSDP, NetBIOS, and PTR
+  -v, --verbose          Verbose scapy output
+  --json                 JSON output
+
+ndp:
+  -t, --timeout          Scan timeout in seconds (default: 3)
+  --resolve_hostname     Resolve hostnames via PTR lookup
   -v, --verbose          Verbose scapy output
   --json                 JSON output
 
@@ -245,3 +263,5 @@ tls:
 ```
 
 > **Note:** `trace` uses ICMP echo probes. Hosts that block ICMP will show `*` for all hops.
+>
+> **Note:** `ndp` sends ICMPv6 echo requests to the all-nodes multicast `ff02::1` and merges results with the OS NDP neighbor cache. Hosts that block ICMPv6 pings may still appear via the cache if they were recently reachable.

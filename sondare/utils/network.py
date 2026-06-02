@@ -287,6 +287,47 @@ def read_arp_cache(subnet: str) -> dict[str, str]:
     return result
 
 
+def get_ipv6_link_local(iface: str) -> str | None:
+    """Returns the link-local IPv6 address of the given interface (without scope suffix), or None."""
+    for addr in psutil.net_if_addrs().get(iface, []):
+        if addr.family == socket.AF_INET6:
+            raw = addr.address.split("%")[0]
+            if raw.lower().startswith("fe80"):
+                return raw.lower()
+    return None
+
+
+def read_ndp_cache(iface: str) -> dict[str, str]:
+    """Returns {ipv6: mac} from the OS NDP neighbor cache for the given interface."""
+    result: dict[str, str] = {}
+    try:
+        if platform.system() == "Darwin":
+            out = subprocess.check_output(["ndp", "-an"], text=True, stderr=subprocess.DEVNULL)
+            for line in out.splitlines():
+                parts = line.split()
+                if len(parts) < 3 or parts[2] != iface:
+                    continue
+                ip_raw = parts[0].split("%")[0].lower()
+                mac = parts[1]
+                if re.match(r"(?:[0-9a-f]{1,2}:){5}[0-9a-f]{1,2}", mac, re.I):
+                    result[ip_raw] = mac.lower()
+        else:
+            out = subprocess.check_output(
+                ["ip", "-6", "neigh", "show", "dev", iface],
+                text=True, stderr=subprocess.DEVNULL,
+            )
+            for line in out.splitlines():
+                parts = line.split()
+                if "lladdr" not in parts:
+                    continue
+                ip_raw = parts[0].split("%")[0].lower()
+                mac = parts[parts.index("lladdr") + 1]
+                result[ip_raw] = mac.lower()
+    except Exception:
+        pass
+    return result
+
+
 def warm_arp_cache(ip: str) -> None:
     """ARP-resolves ip and stores the result in Scapy's cache to avoid promiscuous mode errors."""
     from scapy.all import ARP, Ether, srp, conf
