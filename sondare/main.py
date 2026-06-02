@@ -193,6 +193,7 @@ tls:
     ping_parser = subparsers.add_parser("ping", parents=[shared], help="Ping all hosts in local network with ICMP packets.")
     ping_parser.add_argument("-t", "--timeout", type=int, default=5, help="Timeout for scan response")
     ping_parser.add_argument("--resolve_hostname", action="store_true", help="Resolve hostnames via PTR lookup")
+    ping_parser.add_argument("--target", type=str, default=None, help="IPv6 target to probe; omit to scan the full local IPv4 subnet")
 
     # TCP scan
     tcp_parser = subparsers.add_parser("tcp", parents=[shared], help="Scan ports of target host with TCP packets.")
@@ -335,8 +336,17 @@ def main() -> None:
                         print(f"{h.ip.ljust(ip_col)}{h.mac.ljust(mac_col)}{h.vendor or ''}")
 
         elif args.scan_method == "ping":
-            print(f"Running ICMP scan on {network.get_network_interface()} with {args.timeout}s timeout")
-            scanner = Ping(verbose=args.verbose, timeout=args.timeout, resolve_hostname=args.resolve_hostname)
+            if args.target:
+                import ipaddress as _ipaddress
+                try:
+                    _ipaddress.ip_address(args.target)
+                except ValueError:
+                    print(f"Error: '{args.target}' is not a valid IP address.", file=sys.stderr)
+                    sys.exit(1)
+                print(f"Pinging {args.target} with {args.timeout}s timeout")
+            else:
+                print(f"Running ICMP scan on {network.get_network_interface()} with {args.timeout}s timeout")
+            scanner = Ping(verbose=args.verbose, timeout=args.timeout, resolve_hostname=args.resolve_hostname, target=args.target)
             scanner.scan()
             results = scanner.get_results()
 

@@ -6,7 +6,7 @@ from sondare.main import main
 
 
 def _args(**kwargs):
-    defaults = dict(scan_method=None, verbose=False, timeout=1, json=False)
+    defaults = dict(scan_method=None, verbose=False, timeout=1, json=False, target=None)
     defaults.update(kwargs)
     m = MagicMock()
     for k, v in defaults.items():
