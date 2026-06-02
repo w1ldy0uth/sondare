@@ -93,6 +93,9 @@ sudo sondare ping -t 10
 # Ping scan with hostname resolution
 sudo sondare ping --resolve_hostname
 
+# Probe a specific IPv6 host
+sudo sondare ping --target fe80::dead:beef
+
 # Note: iOS devices block ICMP by design and won't appear in ping results.
 # Use `sondare arp` for complete host discovery including iOS devices.
 
@@ -181,6 +184,7 @@ arp:
   --json                 JSON output
 
 ping:
+  --target               IPv6 host to probe; omit to scan the full local IPv4 subnet
   -t, --timeout          Packet timeout in seconds (default: 5)
   --resolve_hostname     Resolve hostnames via mDNS, SSDP, NetBIOS, and PTR
   -v, --verbose          Verbose scapy output
