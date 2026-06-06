@@ -184,6 +184,14 @@ def _netbios_name(ip: str, timeout: float = 1.0) -> str | None:
         sock.close()
 
 
+def is_ipv6_address(addr: str) -> bool:
+    """Returns True if addr is a valid IPv6 address, False otherwise."""
+    try:
+        return isinstance(ipaddress.ip_address(addr), ipaddress.IPv6Address)
+    except ValueError:
+        return False
+
+
 def get_port_service(port: int, proto: str = "tcp") -> str | None:
     """Returns the well-known service name for a port/protocol, or None."""
     try:

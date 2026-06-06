@@ -1,6 +1,7 @@
 from unittest.mock import patch, MagicMock
 from scapy.all import IP, ICMP
-from sondare.services.icmp import Ping, _is_ipv6
+from sondare.services.icmp import Ping
+from sondare.utils.network import is_ipv6_address as _is_ipv6
 
 
 def _make_ping_scanner(net_mocks, ip="192.168.1.1"):

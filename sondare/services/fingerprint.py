@@ -4,9 +4,9 @@
 import random
 import threading
 import time
-from scapy.all import IP, TCP, ICMP, sr1, sr
+from scapy.all import IP, IPv6, TCP, ICMP, ICMPv6EchoRequest, ICMPv6EchoReply, sr1, sr
 from sondare.models import Fingerprint
-from sondare.utils.network import warm_arp_cache
+from sondare.utils.network import warm_arp_cache, is_ipv6_address
 from sondare.utils.adaptive_pool import AdaptivePool
 
 # Ports tried in parallel when no specific port is given.
@@ -82,6 +82,7 @@ class OsFingerprinter:
         self.port = port
         self._icmp_fallback = icmp_fallback
         self._timeout = timeout
+        self._ipv6 = is_ipv6_address(ip)
         self._pool = AdaptivePool(max_threads=len(_COMMON_PORTS), timeout=timeout)
         self._result: Fingerprint | None = None
         self._lock = threading.Lock()
@@ -89,11 +90,12 @@ class OsFingerprinter:
 
     def _syn_probe(self, sport: int, port: int) -> object:
         """Sends one SYN packet, updates the pool, and returns the response or None."""
+        ip_layer = IPv6(dst=self.ip) if self._ipv6 else IP(dst=self.ip)
         self._pool.acquire()
         try:
             start = time.monotonic()
             rsp = sr1(
-                IP(dst=self.ip) / TCP(sport=sport, dport=port, flags="S"),
+                ip_layer / TCP(sport=sport, dport=port, flags="S"),
                 timeout=self._pool.timeout,
                 verbose=self.verbose,
                 promisc=False,
@@ -126,43 +128,48 @@ class OsFingerprinter:
         with self._lock:
             if self._result is not None:
                 return  # another thread already recorded a result
+            ip_layer = IPv6(dst=self.ip) if self._ipv6 else IP(dst=self.ip)
             sr(
-                IP(dst=self.ip) / TCP(sport=sport, dport=port, flags="R"),
+                ip_layer / TCP(sport=sport, dport=port, flags="R"),
                 timeout=1, verbose=False, promisc=False,
             )
-            tcp  = rsp.getlayer(TCP)
-            opts = _parse_tcp_options(tcp.options)
+            tcp      = rsp.getlayer(TCP)
+            opts     = _parse_tcp_options(tcp.options)
+            ip_resp  = rsp.getlayer(IPv6) if self._ipv6 else rsp.getlayer(IP)
+            ttl      = ip_resp.hlim if self._ipv6 else ip_resp.ttl
             self._result = Fingerprint(
                 ip=self.ip,
-                os=_guess_os(rsp.getlayer(IP).ttl, tcp.window, opts),
-                ttl=rsp.getlayer(IP).ttl,
+                os=_guess_os(ttl, tcp.window, opts),
+                ttl=ttl,
                 window=tcp.window,
                 source="tcp",
             )
             self._found.set()
 
     def _icmp_probe(self) -> None:
-        """Sends one ICMP echo and records OS from TTL alone (window=0 indicates ICMP-derived)."""
-        pkt = sr1(
-            IP(dst=self.ip) / ICMP(),
-            timeout=self._timeout,
-            verbose=self.verbose,
-            promisc=False,
-        )
-        if pkt is not None and pkt.haslayer(IP):
-            ttl = pkt.getlayer(IP).ttl
-            self._result = Fingerprint(
-                ip=self.ip,
-                os=_guess_os(ttl, 0),
-                ttl=ttl,
-                window=0,
-                source="icmp",
+        """Sends one ICMP/ICMPv6 echo and records OS from TTL/hlim alone (window=0 = ICMP-derived)."""
+        if self._ipv6:
+            pkt = sr1(
+                IPv6(dst=self.ip) / ICMPv6EchoRequest(),
+                timeout=self._timeout, verbose=self.verbose, promisc=False,
             )
+            if pkt is not None and pkt.haslayer(ICMPv6EchoReply):
+                hlim = pkt.getlayer(IPv6).hlim
+                self._result = Fingerprint(ip=self.ip, os=_guess_os(hlim, 0), ttl=hlim, window=0, source="icmp")
+        else:
+            pkt = sr1(
+                IP(dst=self.ip) / ICMP(),
+                timeout=self._timeout, verbose=self.verbose, promisc=False,
+            )
+            if pkt is not None and pkt.haslayer(IP):
+                ttl = pkt.getlayer(IP).ttl
+                self._result = Fingerprint(ip=self.ip, os=_guess_os(ttl, 0), ttl=ttl, window=0, source="icmp")
 
     def scan(self) -> None:
         """Probes all ports in parallel; fingerprints on the first SYN-ACK.
         Falls back to ICMP TTL when no TCP port responds (unless icmp_fallback=False)."""
-        warm_arp_cache(self.ip)
+        if not self._ipv6:
+            warm_arp_cache(self.ip)
         ports = [self.port] if self.port is not None else _COMMON_PORTS
         threads = [
             threading.Thread(target=self._probe, args=(port,), daemon=True)

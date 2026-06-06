@@ -4,9 +4,9 @@
 import threading
 import time
 from queue import Queue
-from scapy.all import IP, UDP, ICMP, sr1
+from scapy.all import IP, IPv6, UDP, ICMP, ICMPv6DestUnreach, sr1
 from sondare.models import Port
-from sondare.utils.network import warm_arp_cache, get_port_service
+from sondare.utils.network import warm_arp_cache, get_port_service, is_ipv6_address
 from sondare.utils.adaptive_pool import AdaptivePool
 
 
@@ -21,6 +21,7 @@ class Udp:
         self.port_end = port_end
         self.retries = retries
 
+        self._ipv6 = is_ipv6_address(ip)
         self._pool = AdaptivePool(max_threads=threads, timeout=timeout)
         self._lock = threading.Lock()
         self.q: Queue[int] = Queue()
@@ -31,12 +32,13 @@ class Udp:
 
     def check_port(self, target_port: int) -> None:
         """Probes a UDP port; records it unless ICMP port-unreachable is received."""
+        ip_layer = IPv6(dst=self.ip) if self._ipv6 else IP(dst=self.ip)
         for attempt in range(self.retries + 1):
             self._pool.acquire()
             try:
                 start = time.monotonic()
                 rsp = sr1(
-                    IP(dst=self.ip) / UDP(dport=target_port),
+                    ip_layer / UDP(dport=target_port),
                     timeout=self._pool.timeout,
                     verbose=self.verbose,
                     promisc=False,
@@ -53,10 +55,15 @@ class Udp:
                         self.open_ports.append(Port(ip=self.ip, port=target_port))
                 continue
 
-            if rsp.haslayer(ICMP):
-                icmp = rsp.getlayer(ICMP)
-                if icmp.type == 3 and icmp.code == 3:
-                    return  # port unreachable — closed
+            if self._ipv6:
+                # ICMPv6 Destination Unreachable, code 4 = port unreachable
+                if rsp.haslayer(ICMPv6DestUnreach) and rsp.getlayer(ICMPv6DestUnreach).code == 4:
+                    return
+            else:
+                if rsp.haslayer(ICMP):
+                    icmp = rsp.getlayer(ICMP)
+                    if icmp.type == 3 and icmp.code == 3:
+                        return  # port unreachable — closed
 
             with self._lock:
                 self.open_ports.append(Port(ip=self.ip, port=target_port))
@@ -75,7 +82,8 @@ class Udp:
 
     def scan(self) -> None:
         """Runs the threaded UDP scan."""
-        warm_arp_cache(self.ip)
+        if not self._ipv6:
+            warm_arp_cache(self.ip)
         thread_count = min(self.threads, self._total)
         for _ in range(thread_count):
             t = threading.Thread(target=self._threader)

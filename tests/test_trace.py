@@ -87,3 +87,35 @@ def test_main_trace_json_output(capsys):
         except json.JSONDecodeError:
             continue
     assert False, "No JSON line found in output"
+
+
+def test_ipv6_target_uses_ipv6_layer():
+    from scapy.all import IPv6, ICMPv6EchoRequest
+    with patch("sondare.services.trace.sr1", return_value=None) as mock_sr1:
+        scanner = Traceroute(verbose=False, ip="fe80::1", timeout=1, max_hops=1)
+        scanner.scan()
+
+    pkt = mock_sr1.call_args[0][0]
+    assert pkt.haslayer(IPv6)
+    assert pkt.haslayer(ICMPv6EchoRequest)
+
+
+def test_ipv4_target_uses_ip_layer():
+    from scapy.all import IP, ICMP
+    with patch("sondare.services.trace.sr1", return_value=None) as mock_sr1:
+        scanner = Traceroute(verbose=False, ip="8.8.8.8", timeout=1, max_hops=1)
+        scanner.scan()
+
+    pkt = mock_sr1.call_args[0][0]
+    assert pkt.haslayer(IP)
+    assert pkt.haslayer(ICMP)
+
+
+def test_ipv6_hlim_set_correctly():
+    from scapy.all import IPv6
+    with patch("sondare.services.trace.sr1", return_value=None) as mock_sr1:
+        scanner = Traceroute(verbose=False, ip="fe80::1", timeout=1, max_hops=3)
+        scanner.scan()
+
+    hlim_values = [mock_sr1.call_args_list[i][0][0][IPv6].hlim for i in range(3)]
+    assert hlim_values == [1, 2, 3]
