@@ -4,8 +4,8 @@
 import threading
 import time
 from datetime import datetime
-from scapy.all import IP, ICMP, ARP, Ether, sr1, srp
-from sondare.utils.network import get_subnet, get_network_interface
+from scapy.all import IP, ICMP, IPv6, ICMPv6EchoRequest, ICMPv6EchoReply, ARP, Ether, sr1, srp
+from sondare.utils.network import get_subnet, get_network_interface, is_ipv6_address
 
 
 def _arp_scan(timeout: int, verbose: bool) -> list[str]:
@@ -56,6 +56,14 @@ class HostsWatcher:
         self._last_line_count = 0
 
     def _ping(self, host: str) -> bool:
+        if is_ipv6_address(host):
+            ans = sr1(
+                IPv6(dst=host) / ICMPv6EchoRequest(),
+                timeout=self._timeout,
+                verbose=self._verbose,
+                promisc=False,
+            )
+            return bool(ans and ans.haslayer(ICMPv6EchoReply))
         ans = sr1(
             IP(dst=host) / ICMP(),
             timeout=self._timeout,
@@ -99,17 +107,19 @@ class HostsWatcher:
             print(f"\033[{self._last_line_count}A\033[J", end="", flush=True)
 
     def _draw(self, ts: str) -> None:
+        ip_w = max((len(ip) for ip in self._state), default=14) + 2
+        ip_w = max(ip_w, 4)  # at least wide enough for "IP" header
         lines = [
             f"Host monitor — updated {ts}, interval {self._interval}s (Ctrl+C to stop)",
             "",
-            f"  {'IP':<16}{'Status':<6}  Since",
-            f"  {'─' * 16}{'─' * 6}  {'─' * 8}",
+            f"  {'IP':<{ip_w}}{'Status':<6}  Since",
+            f"  {'─' * ip_w}{'─' * 6}  {'─' * 8}",
         ]
         if self._state:
             for ip in sorted(self._state):
                 is_up, since = self._state[ip]
                 status = "UP  " if is_up else "DOWN"
-                lines.append(f"  {ip:<16}{status}  {since}")
+                lines.append(f"  {ip:<{ip_w}}{status}  {since}")
         else:
             lines.append("  (no hosts found)")
         print("\n".join(lines), flush=True)

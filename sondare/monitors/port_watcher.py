@@ -6,8 +6,8 @@ import threading
 import time
 from datetime import datetime
 from queue import Queue
-from scapy.all import IP, TCP, sr1, sr
-from sondare.utils.network import warm_arp_cache
+from scapy.all import IP, IPv6, TCP, sr1, sr
+from sondare.utils.network import warm_arp_cache, is_ipv6_address
 
 
 def _syn_scan(ip: str, port_begin: int, port_end: int, timeout: float, threads: int, verbose: bool) -> set[int]:
@@ -20,17 +20,19 @@ def _syn_scan(ip: str, port_begin: int, port_end: int, timeout: float, threads: 
     open_ports: set[int] = set()
     lock = threading.Lock()
     q: Queue[int] = Queue()
+    ipv6 = is_ipv6_address(ip)
 
     def check(port: int) -> None:
         sport = random.randint(1025, 65534)
+        ip_layer = IPv6(dst=ip) if ipv6 else IP(dst=ip)
         rsp = sr1(
-            IP(dst=ip) / TCP(sport=sport, dport=port, flags="S"),
+            ip_layer / TCP(sport=sport, dport=port, flags="S"),
             timeout=timeout,
             verbose=verbose,
             promisc=False,
         )
         if rsp and rsp.haslayer(TCP) and rsp.getlayer(TCP).flags == 0x12:
-            sr(IP(dst=ip) / TCP(sport=sport, dport=port, flags="R"), timeout=1, verbose=False, promisc=False)
+            sr(ip_layer / TCP(sport=sport, dport=port, flags="R"), timeout=1, verbose=False, promisc=False)
             with lock:
                 open_ports.add(port)
 
@@ -98,7 +100,8 @@ class PortWatcher:
             f"Monitoring ports {port_range} on {self._ip}"
             f" every {self._interval}s — Ctrl+C to stop\n"
         )
-        warm_arp_cache(self._ip)
+        if not is_ipv6_address(self._ip):
+            warm_arp_cache(self._ip)
         first = True
         while True:
             ts = datetime.now().strftime("%H:%M:%S")
