@@ -25,6 +25,7 @@ from sondare.services.trace import Traceroute
 from sondare.services.tls import TlsProber, DEFAULT_PORTS as _TLS_DEFAULT_PORTS
 from sondare.monitors.arp_watcher import ArpWatcher
 from sondare.monitors.hosts_watcher import HostsWatcher
+from sondare.monitors.ndp_watcher import NdpWatcher
 from sondare.monitors.port_watcher import PortWatcher
 from sondare.monitors.traffic_sniffer import TrafficSniffer
 
@@ -177,6 +178,10 @@ monitor arp:
   -t, --timeout     Timeout for initial ARP seed scan (default: 5)
   -v, --verbose     Verbose scapy output
 
+monitor ndp:
+  -t, --timeout     Timeout for initial multicast seed sweep (default: 5)
+  -v, --verbose     Verbose scapy output
+
 monitor hosts:
   --hosts           Hosts to monitor; omit to auto-discover via ARP
   -i, --interval    Seconds between ping rounds (default: 30)
@@ -271,7 +276,9 @@ tls:
     monitor_sub = monitor_parser.add_subparsers(title="MONITOR TYPES", dest="monitor_type")
 
     arp_watch_parser = monitor_sub.add_parser("arp", parents=[shared], help="Watch for ARP traffic and report new hosts or MAC changes.")
+    ndp_watch_parser = monitor_sub.add_parser("ndp", parents=[shared], help="Watch for ICMPv6 Neighbor Advertisements and report new IPv6 hosts or MAC changes.")
     arp_watch_parser.add_argument("-t", "--timeout", type=int, default=5, help="Timeout for initial ARP seed scan (default: 5)")
+    ndp_watch_parser.add_argument("-t", "--timeout", type=int, default=5, help="Timeout for initial multicast seed sweep (default: 5)")
 
     updown_parser = monitor_sub.add_parser("hosts", parents=[shared], help="Periodically ping hosts and report up/down state changes.")
     updown_parser.add_argument("--hosts", nargs="+", metavar="IP", default=None, help="Hosts to monitor (default: discover via ARP scan)")
@@ -508,10 +515,13 @@ def main() -> None:
 
         elif args.scan_method == "monitor":
             if args.monitor_type is None:
-                print("Usage: sondare monitor {arp,hosts,ports,traffic}\nRun 'sondare monitor <type> --help' for details.")
+                print("Usage: sondare monitor {arp,ndp,hosts,ports,traffic}\nRun 'sondare monitor <type> --help' for details.")
                 return
             if args.monitor_type == "arp":
                 watcher = ArpWatcher(verbose=args.verbose, timeout=args.timeout)
+                watcher.watch()
+            elif args.monitor_type == "ndp":
+                watcher = NdpWatcher(verbose=args.verbose, timeout=args.timeout)
                 watcher.watch()
             elif args.monitor_type == "hosts":
                 monitor = HostsWatcher(
