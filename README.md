@@ -93,8 +93,14 @@ sudo sondare ping -t 10
 # Ping scan with hostname resolution
 sudo sondare ping --resolve_hostname
 
-# Probe a specific IPv6 host
+# Probe a single IPv4 host
+sudo sondare ping --target 192.168.1.1
+
+# Probe a single IPv6 host
 sudo sondare ping --target fe80::dead:beef
+
+# Scan all IPv6 hosts on the local link via ICMPv6 multicast
+sudo sondare ping --ipv6
 
 # Note: iOS devices block ICMP by design and won't appear in ping results.
 # Use `sondare arp` for complete host discovery including iOS devices.
@@ -184,11 +190,12 @@ arp:
   --json                 JSON output
 
 ping:
-  --target               IPv6 host to probe; omit to scan the full local IPv4 subnet
-  -t, --timeout          Packet timeout in seconds (default: 5)
-  --resolve_hostname     Resolve hostnames via mDNS, SSDP, NetBIOS, and PTR
-  -v, --verbose          Verbose scapy output
-  --json                 JSON output
+  --target           Single host to probe (IPv4 or IPv6); omit to scan the local IPv4 subnet
+  --ipv6             ICMPv6 multicast sweep of ff02::1 (all IPv6 hosts on the local link)
+  -t, --timeout      Packet timeout in seconds (default: 5)
+  --resolve_hostname Resolve hostnames via mDNS, SSDP, NetBIOS, and PTR
+  -v, --verbose      Verbose scapy output
+  --json             JSON output
 
 ndp:
   -t, --timeout          Scan timeout in seconds (default: 3)

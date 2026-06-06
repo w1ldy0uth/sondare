@@ -141,6 +141,94 @@ class TestIpv6Ping:
         mock_sr.assert_called_once()
         mock_sr1.assert_not_called()
 
+    def test_ipv4_target_only_scans_that_host(self, net_mocks):
+        addrs, stats = net_mocks(ip="192.168.1.1")
+        with patch("psutil.net_if_addrs", return_value=addrs), \
+             patch("psutil.net_if_stats", return_value=stats):
+            scanner = Ping(verbose=False, timeout=1, target="192.168.1.2")
+
+        assert scanner.hosts == ["192.168.1.2"]
+
+
+def _v6_multicast_reply(src_ip: str, is_reply: bool = True):
+    ipv6_layer = MagicMock()
+    ipv6_layer.src = src_ip
+    pkt = MagicMock()
+    pkt.haslayer.side_effect = lambda cls: is_reply and cls.__name__ == "ICMPv6EchoReply"
+    pkt.__getitem__ = MagicMock(side_effect=lambda cls: ipv6_layer if cls.__name__ == "IPv6" else MagicMock())
+    return pkt
+
+
+class TestIpv6MulticastScan:
+    def _scan(self, scanner, srp_pairs=None, local_ip="fe80::1"):
+        with patch("sondare.services.icmp.get_network_interface", return_value="eth0"), \
+             patch("sondare.services.icmp.get_ipv6_link_local", return_value=local_ip), \
+             patch("sondare.services.icmp.srp", return_value=(srp_pairs or [], None)), \
+             patch("builtins.print"):
+            scanner.scan()
+
+    def test_ipv6_flag_triggers_multicast_scan(self):
+        with patch("sondare.services.icmp.get_network_interface", return_value="eth0"), \
+             patch("sondare.services.icmp.get_ipv6_link_local", return_value="fe80::1"), \
+             patch("sondare.services.icmp.srp", return_value=([], None)) as mock_srp, \
+             patch("builtins.print"):
+            Ping(verbose=False, timeout=3, ipv6=True).scan()
+
+        kwargs = mock_srp.call_args.kwargs
+        assert kwargs["multi"] is True
+        assert kwargs["iface"] == "eth0"
+
+    def test_multicast_collects_echo_replies(self):
+        pairs = [
+            (None, _v6_multicast_reply("fe80::aaaa")),
+            (None, _v6_multicast_reply("fe80::bbbb")),
+        ]
+        scanner = Ping(verbose=False, timeout=1, ipv6=True)
+        self._scan(scanner, srp_pairs=pairs)
+
+        assert set(scanner.get_results()) == {"fe80::aaaa", "fe80::bbbb"}
+
+    def test_multicast_excludes_own_link_local(self):
+        own = "fe80::dead:beef"
+        pairs = [(None, _v6_multicast_reply(own))]
+        scanner = Ping(verbose=False, timeout=1, ipv6=True)
+        self._scan(scanner, srp_pairs=pairs, local_ip=own)
+
+        assert scanner.get_results() == []
+
+    def test_multicast_ignores_non_echo_reply(self):
+        pairs = [(None, _v6_multicast_reply("fe80::1234", is_reply=False))]
+        scanner = Ping(verbose=False, timeout=1, ipv6=True)
+        self._scan(scanner, srp_pairs=pairs)
+
+        assert scanner.get_results() == []
+
+    def test_multicast_deduplicates_replies(self):
+        pairs = [
+            (None, _v6_multicast_reply("fe80::cafe")),
+            (None, _v6_multicast_reply("fe80::cafe")),
+        ]
+        scanner = Ping(verbose=False, timeout=1, ipv6=True)
+        self._scan(scanner, srp_pairs=pairs)
+
+        assert scanner.get_results() == ["fe80::cafe"]
+
+    def test_ipv6_flag_does_not_call_sr_or_sr1(self):
+        with patch("sondare.services.icmp.get_network_interface", return_value="eth0"), \
+             patch("sondare.services.icmp.get_ipv6_link_local", return_value="fe80::1"), \
+             patch("sondare.services.icmp.srp", return_value=([], None)), \
+             patch("sondare.services.icmp.sr") as mock_sr, \
+             patch("sondare.services.icmp.sr1") as mock_sr1, \
+             patch("builtins.print"):
+            Ping(verbose=False, timeout=1, ipv6=True).scan()
+
+        mock_sr.assert_not_called()
+        mock_sr1.assert_not_called()
+
+    def test_ipv6_flag_hosts_list_is_empty(self):
+        scanner = Ping(verbose=False, timeout=1, ipv6=True)
+        assert scanner.hosts == []
+
 
 class TestResolveHostname:
     def test_get_hostnames_empty_without_flag(self, net_mocks):
