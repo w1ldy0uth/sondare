@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sondare"
-version = "1.0.6"
-description = "Probe and monitor local network hosts — ARP, ICMP, TCP, UDP, OS fingerprinting, and network graph."
+version = "1.1.0"
+description = "Probe and monitor local network hosts — ARP, NDP, ICMP, TCP, UDP, OS fingerprinting, TLS probing, and network graph."
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
@@ -21,7 +21,7 @@ dependencies = [
     "cryptography>=41.0",
 ]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Environment :: Console",
     "Intended Audience :: System Administrators",
     "Intended Audience :: Information Technology",
