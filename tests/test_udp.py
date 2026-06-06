@@ -123,3 +123,41 @@ class TestGetResults:
 
         ports = [p.port for p in scanner.get_results()]
         assert ports == sorted(ports)
+
+
+class TestIpv6Udp:
+    def test_ipv6_target_uses_ipv6_layer(self):
+        from scapy.all import IPv6
+        scanner = Udp(verbose=False, ip="fe80::1", port_begin=53, port_end=53,
+                      timeout=1, threads=1, retries=0)
+        with patch("sondare.services.udp.sr1", return_value=None) as mock_sr1, \
+             patch("sondare.services.udp.warm_arp_cache"):
+            scanner.check_port(53)
+
+        pkt = mock_sr1.call_args[0][0]
+        assert pkt.haslayer(IPv6)
+
+    def test_ipv6_port_unreachable_closes_port(self):
+        from unittest.mock import patch, MagicMock
+        icmpv6 = MagicMock()
+        icmpv6.code = 4
+        pkt = MagicMock()
+        pkt.haslayer.side_effect = lambda cls: cls.__name__ == "ICMPv6DestUnreach"
+        pkt.getlayer.return_value = icmpv6
+
+        scanner = Udp(verbose=False, ip="fe80::1", port_begin=53, port_end=53,
+                      timeout=1, threads=1, retries=0)
+        with patch("sondare.services.udp.sr1", return_value=pkt), \
+             patch("sondare.services.udp.warm_arp_cache"):
+            scanner.check_port(53)
+
+        assert scanner.open_ports == []
+
+    def test_ipv6_scan_skips_arp_cache(self):
+        scanner = Udp(verbose=False, ip="fe80::1", port_begin=53, port_end=53,
+                      timeout=1, threads=1, retries=0)
+        with patch("sondare.services.udp.sr1", return_value=None), \
+             patch("sondare.services.udp.warm_arp_cache") as mock_arp:
+            scanner.scan()
+
+        mock_arp.assert_not_called()

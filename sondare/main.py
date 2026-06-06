@@ -35,38 +35,87 @@ class Target(NamedTuple):
     port_end: int
 
 
-_TARGET_RE = re.compile(r"([^:]+)(?::(\d+)(?:-(\d+))?)?")
 _DEFAULT_PORT_BEGIN = 1
 _DEFAULT_PORT_END = 1000
 
+# Bracket IPv6 with optional port range: [fe80::1] or [fe80::1]:80 or [fe80::1]:80-443
+_IPV6_BRACKET_RE = re.compile(r"\[([^\]]+)\](?::(\d+)(?:-(\d+))?)?")
+# IPv4 / hostname with optional port range
+_IPV4_RE = re.compile(r"([^:]+)(?::(\d+)(?:-(\d+))?)?")
+
+
+def _parse_port_range(port_str: str | None, end_str: str | None, value: str) -> tuple[int, int]:
+    if port_str is None:
+        return _DEFAULT_PORT_BEGIN, _DEFAULT_PORT_END
+    start = int(port_str)
+    end   = int(end_str) if end_str else start
+    if start < 1 or end > 65535:
+        raise argparse.ArgumentTypeError(f"Port out of range (1-65535) in '{value}'.")
+    if start > end:
+        raise argparse.ArgumentTypeError(f"Start port {start} must be <= end port {end} in '{value}'.")
+    return start, end
+
 
 def parse_target(value: str) -> Target:
-    """Parses 'ip', 'ip:port', or 'ip:start-end' into a Target."""
-    match = _TARGET_RE.fullmatch(value)
-    if not match:
-        raise argparse.ArgumentTypeError(f"Invalid target format: '{value}'. Expected ip, ip:port, or ip:start-end.")
-    ip = match.group(1)
-    if match.group(2) is None:
-        return Target(ip, _DEFAULT_PORT_BEGIN, _DEFAULT_PORT_END)
-    start = int(match.group(2))
-    end = int(match.group(3)) if match.group(3) else start
-    if start < 1:
-        raise argparse.ArgumentTypeError(f"Port {start} out of range (1-65535).")
-    if start > end:
-        raise argparse.ArgumentTypeError(f"Start port {start} must be <= end port {end}.")
-    if end > 65535:
-        raise argparse.ArgumentTypeError(f"Port {end} out of range (1-65535).")
+    """Parses 'ip', 'ip:port', 'ip:start-end', '[ipv6]', '[ipv6]:port', or '[ipv6]:start-end'."""
+    import ipaddress as _ia
+    if value.startswith("["):
+        m = _IPV6_BRACKET_RE.fullmatch(value)
+        if not m:
+            raise argparse.ArgumentTypeError(f"Invalid target format: '{value}'.")
+        ip = m.group(1)
+        start, end = _parse_port_range(m.group(2), m.group(3), value)
+    else:
+        # Bare IPv6 without brackets (no port can be specified this way)
+        try:
+            addr = _ia.ip_address(value)
+            if isinstance(addr, _ia.IPv6Address):
+                return Target(value, _DEFAULT_PORT_BEGIN, _DEFAULT_PORT_END)
+        except ValueError:
+            pass
+        # Detect bare IPv6 + port suffix and suggest bracket notation.
+        # Strip a trailing :port or :start-end and test if the remainder is valid IPv6.
+        m_suffix = re.match(r"^(.+):(\d+(?:-\d+)?)$", value)
+        if m_suffix:
+            try:
+                candidate = _ia.ip_address(m_suffix.group(1))
+                if isinstance(candidate, _ia.IPv6Address):
+                    raise argparse.ArgumentTypeError(
+                        f"IPv6 addresses with ports require bracket notation: "
+                        f"[{m_suffix.group(1)}]:{m_suffix.group(2)}"
+                    )
+            except ValueError:
+                pass
+        m = _IPV4_RE.fullmatch(value)
+        if not m:
+            raise argparse.ArgumentTypeError(f"Invalid target format: '{value}'.")
+        ip = m.group(1)
+        start, end = _parse_port_range(m.group(2), m.group(3), value)
     return Target(ip, start, end)
 
 
 def _parse_tls_target(value: str) -> tuple[str, tuple[int, ...]]:
-    """Parses 'ip' or 'ip:port' into (ip, ports). Defaults to DEFAULT_PORTS when no port given."""
-    m = re.fullmatch(r"([^:]+)(?::(\d+))?", value)
-    if not m:
-        raise argparse.ArgumentTypeError(f"Invalid target: '{value}'")
-    ip = m.group(1)
-    if m.group(2) is not None:
-        port = int(m.group(2))
+    """Parses 'ip', '[ipv6]', 'ip:port', or '[ipv6]:port' into (ip, ports)."""
+    import ipaddress as _ia
+    if value.startswith("["):
+        m = re.fullmatch(r"\[([^\]]+)\](?::(\d+))?", value)
+        if not m:
+            raise argparse.ArgumentTypeError(f"Invalid target: '{value}'")
+        ip, port_str = m.group(1), m.group(2)
+    else:
+        # Bare IPv6 without port
+        try:
+            addr = _ia.ip_address(value)
+            if isinstance(addr, _ia.IPv6Address):
+                return value, _TLS_DEFAULT_PORTS
+        except ValueError:
+            pass
+        m = re.fullmatch(r"([^:]+)(?::(\d+))?", value)
+        if not m:
+            raise argparse.ArgumentTypeError(f"Invalid target: '{value}'")
+        ip, port_str = m.group(1), m.group(2)
+    if port_str is not None:
+        port = int(port_str)
         if not (1 <= port <= 65535):
             raise argparse.ArgumentTypeError(f"Port {port} out of range (1-65535).")
         return ip, (port,)
@@ -198,7 +247,7 @@ tls:
 
     # TCP scan
     tcp_parser = subparsers.add_parser("tcp", parents=[shared], help="Scan ports of target host with TCP packets.")
-    tcp_parser.add_argument("--target", type=parse_target, default=None, help="Target in the form ip, ip:port, or ip:start-end (default: local machine, ports 1-1000)")
+    tcp_parser.add_argument("--target", type=parse_target, default=None, help="Target as ip, ip:port, or ip:start-end. IPv6 with ports: '[fe80::1]:80' (quote brackets in shell)")
     tcp_parser.add_argument("-t", "--timeout", type=int, default=3, help="Timeout for port scan (default: 3)")
     tcp_parser.add_argument("-th", "--threads", type=int, default=20, help="Amount of threads to use")
     tcp_parser.add_argument("-r", "--retries", type=int, default=2, help="Retries per port on no response (default: 2)")
@@ -212,7 +261,7 @@ tls:
 
     # UDP scan
     udp_parser = subparsers.add_parser("udp", parents=[shared], help="Scan ports of target host with UDP packets.")
-    udp_parser.add_argument("--target", type=parse_target, default=None, help="Target in the form ip, ip:port, or ip:start-end (default: local machine, ports 1-1000)")
+    udp_parser.add_argument("--target", type=parse_target, default=None, help="Target as ip, ip:port, or ip:start-end. IPv6 with ports: '[fe80::1]:80' (quote brackets in shell)")
     udp_parser.add_argument("-t", "--timeout", type=int, default=3, help="Timeout for port scan (default: 3)")
     udp_parser.add_argument("-th", "--threads", type=int, default=20, help="Amount of threads to use")
     udp_parser.add_argument("-r", "--retries", type=int, default=2, help="Retries per port on no response (default: 2)")
@@ -231,7 +280,7 @@ tls:
     updown_parser.add_argument("-th", "--threads", type=int, default=50, help="Concurrent pings per round (default: 50)")
 
     ports_parser = monitor_sub.add_parser("ports", parents=[shared], help="Periodically SYN-scan a target and report port state changes.")
-    ports_parser.add_argument("--target", type=parse_target, default=None, help="Target as ip, ip:port, or ip:start-end (default: local machine, ports 1-1000)")
+    ports_parser.add_argument("--target", type=parse_target, default=None, help="Target as ip, ip:port, or ip:start-end. IPv6 with ports: '[fe80::1]:80' (quote brackets in shell)")
     ports_parser.add_argument("-i", "--interval", type=int, default=60, help="Seconds between scans (default: 60)")
     ports_parser.add_argument("-t", "--timeout", type=float, default=3.0, help="Timeout per probe in seconds (default: 3)")
     ports_parser.add_argument("-th", "--threads", type=int, default=20, help="Concurrent probes per scan (default: 20)")
@@ -248,7 +297,7 @@ tls:
 
     # TLS probe
     tls_parser = subparsers.add_parser("tls", parents=[shared], help="Probe TLS/SSL certificate details on a target host.")
-    tls_parser.add_argument("--target", required=True, help="Target as ip or ip:port (default ports: 443, 8443)")
+    tls_parser.add_argument("--target", required=True, help="Target as ip or ip:port. IPv6 with port: '[fe80::1]:443' (quote brackets in shell)")
     tls_parser.add_argument("-t", "--timeout", type=float, default=5.0, help="Connection timeout in seconds (default: 5)")
 
     # mDNS scan

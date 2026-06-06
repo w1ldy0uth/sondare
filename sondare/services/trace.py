@@ -4,8 +4,9 @@
 import signal
 import time
 from collections.abc import Callable
-from scapy.all import IP, ICMP, sr1
+from scapy.all import IP, IPv6, ICMP, ICMPv6EchoRequest, sr1
 from sondare.models import Hop
+from sondare.utils.network import is_ipv6_address
 
 
 class Traceroute:
@@ -24,11 +25,15 @@ class Traceroute:
         self._timeout = timeout
         self._max_hops = max_hops
         self._on_hop = on_hop
+        self._ipv6 = is_ipv6_address(ip)
         self._results: list[Hop] = []
         self._interrupted = False
 
     def _probe(self, ttl: int) -> Hop:
-        pkt = IP(dst=self.ip, ttl=ttl) / ICMP()
+        if self._ipv6:
+            pkt = IPv6(dst=self.ip, hlim=ttl) / ICMPv6EchoRequest()
+        else:
+            pkt = IP(dst=self.ip, ttl=ttl) / ICMP()
         t0 = time.perf_counter()
         reply = sr1(pkt, timeout=self._timeout, verbose=self.verbose, promisc=False)
         rtt = round((time.perf_counter() - t0) * 1000, 2)

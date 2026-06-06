@@ -5,10 +5,10 @@ import random
 import threading
 import time
 from queue import Queue
-from scapy.all import IP, TCP, sr1, sr
+from scapy.all import IP, IPv6, TCP, sr1, sr
 from sondare.models import Port
 from sondare.utils.banners import grab_banner
-from sondare.utils.network import warm_arp_cache, get_port_service
+from sondare.utils.network import warm_arp_cache, get_port_service, is_ipv6_address
 from sondare.utils.adaptive_pool import AdaptivePool
 
 
@@ -25,6 +25,7 @@ class Tcp:
         self.banners = banners
         self._timeout = timeout
 
+        self._ipv6 = is_ipv6_address(ip)
         self._pool = AdaptivePool(max_threads=threads, timeout=timeout, adapt_concurrency=True)
         self._lock = threading.Lock()
         self.q: Queue[int] = Queue()
@@ -35,13 +36,14 @@ class Tcp:
 
     def check_port(self, target_port: int) -> None:
         """Probes a port up to retries+1 times; records it if any attempt gets a SYN-ACK."""
+        ip_layer = IPv6(dst=self.ip) if self._ipv6 else IP(dst=self.ip)
         for _ in range(self.retries + 1):
             source_port = random.randint(1025, 65534)
             self._pool.acquire()
             try:
                 start = time.monotonic()
                 rsp = sr1(
-                    IP(dst=self.ip) / TCP(sport=source_port, dport=target_port, flags="S"),
+                    ip_layer / TCP(sport=source_port, dport=target_port, flags="S"),
                     timeout=self._pool.timeout,
                     verbose=self.verbose,
                     promisc=False,
@@ -57,7 +59,7 @@ class Tcp:
 
             if rsp.haslayer(TCP):
                 if rsp.getlayer(TCP).flags == 0x12:  # SYN-ACK: open
-                    sr(IP(dst=self.ip) / TCP(sport=source_port, dport=target_port, flags="R"), timeout=1, verbose=False, promisc=False)
+                    sr(ip_layer / TCP(sport=source_port, dport=target_port, flags="R"), timeout=1, verbose=False, promisc=False)
                     with self._lock:
                         self.open_ports.append(Port(ip=self.ip, port=target_port))
                 return  # RST or anything else: definitive answer, stop retrying
@@ -75,7 +77,8 @@ class Tcp:
 
     def scan(self) -> None:
         """Runs the threaded SYN scan."""
-        warm_arp_cache(self.ip)
+        if not self._ipv6:
+            warm_arp_cache(self.ip)
         thread_count = min(self.threads, self._total)
         for _ in range(thread_count):
             t = threading.Thread(target=self._threader)

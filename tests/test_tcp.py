@@ -241,3 +241,34 @@ class TestBannersIntegration:
 
         mock_grab.assert_not_called()
         assert scanner.open_ports == [Port(ip="10.0.0.1", port=80, banner=None)]
+
+
+class TestIpv6Tcp:
+    def test_ipv6_target_uses_ipv6_layer(self):
+        from scapy.all import IPv6
+        scanner = Tcp(verbose=False, ip="fe80::1", port_begin=80, port_end=80,
+                      timeout=1, threads=1, retries=0)
+        with patch("sondare.services.tcp.sr1", return_value=None) as mock_sr1, \
+             patch("sondare.services.tcp.warm_arp_cache"):
+            scanner.check_port(80)
+
+        pkt = mock_sr1.call_args[0][0]
+        assert pkt.haslayer(IPv6)
+
+    def test_ipv6_scan_skips_arp_cache(self):
+        scanner = Tcp(verbose=False, ip="fe80::1", port_begin=80, port_end=80,
+                      timeout=1, threads=1, retries=0)
+        with patch("sondare.services.tcp.sr1", return_value=None), \
+             patch("sondare.services.tcp.warm_arp_cache") as mock_arp:
+            scanner.scan()
+
+        mock_arp.assert_not_called()
+
+    def test_ipv4_scan_calls_arp_cache(self):
+        scanner = Tcp(verbose=False, ip="192.168.1.1", port_begin=80, port_end=80,
+                      timeout=1, threads=1, retries=0)
+        with patch("sondare.services.tcp.sr1", return_value=None), \
+             patch("sondare.services.tcp.warm_arp_cache") as mock_arp:
+            scanner.scan()
+
+        mock_arp.assert_called_once_with("192.168.1.1")

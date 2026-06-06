@@ -3,17 +3,10 @@
 
 import ipaddress
 from scapy.all import IP, ICMP, IPv6, ICMPv6EchoRequest, ICMPv6EchoReply, Ether, sr, sr1, srp
-from sondare.utils.network import get_subnet, get_network_interface, get_ipv6_link_local, resolve_hostnames
+from sondare.utils.network import get_subnet, get_network_interface, get_ipv6_link_local, is_ipv6_address, resolve_hostnames
 
 _ALL_NODES_MAC  = "33:33:00:00:00:01"
 _ALL_NODES_ADDR = "ff02::1"
-
-
-def _is_ipv6(addr: str) -> bool:
-    try:
-        return isinstance(ipaddress.ip_address(addr), ipaddress.IPv6Address)
-    except ValueError:
-        return False
 
 
 class Ping:
@@ -37,7 +30,7 @@ class Ping:
         self._timeout = timeout
         self._resolve_hostname = resolve_hostname
         self._target = target
-        self._ipv6_mode = ipv6 or (target is not None and _is_ipv6(target))
+        self._ipv6_mode = ipv6 or (target is not None and is_ipv6_address(target))
         self._multicast = ipv6 and target is None
 
         if not self._ipv6_mode:
