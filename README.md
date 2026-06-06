@@ -18,6 +18,7 @@
 - **OS fingerprinting** — guesses the OS of a host by analysing TTL and TCP window size in a SYN-ACK response
 - **TLS/SSL probing** — extracts certificate details (CN, issuer, validity, SANs) from HTTPS ports; flags expired and self-signed certs
 - **Hostname resolution** — resolves hostnames via mDNS service browse, SSDP/UPnP, NetBIOS, and PTR records
+- **Network graph** — renders an interactive HTML topology of the local network via dual-stack ARP + NDP discovery, with optional OS fingerprinting and vendor labels per node
 
 ## Requirements
 
@@ -61,10 +62,11 @@ sudo sondare <command> [options]
 | `udp` | UDP port scan of a target host |
 | `os` | OS fingerprint of a target host |
 | `monitor arp` | Watch for ARP traffic; report new hosts and MAC changes |
-| `monitor hosts` | Live host reachability table with auto-discovery |
-| `monitor ports` | Periodically SYN-scan a target and report port state changes |
+| `monitor ndp` | Watch for ICMPv6 Neighbor Advertisements; report new IPv6 hosts and MAC changes |
+| `monitor hosts` | Live host reachability table with auto-discovery (IPv4 and IPv6) |
+| `monitor ports` | Periodically SYN-scan a target and report port state changes (IPv4 and IPv6) |
 | `monitor traffic` | Live packet capture with per-packet protocol breakdown |
-| `graph` | Generate an interactive HTML network graph of the local subnet |
+| `graph` | Generate an interactive HTML network graph via ARP + NDP dual-stack discovery |
 | `mdns` | Discover mDNS/Bonjour services on the local network |
 | `trace` | Trace the network path to a target host |
 | `tls` | Probe TLS/SSL certificate details on a target host |
@@ -114,8 +116,14 @@ sudo sondare tcp --target 192.168.1.1:80
 # Grab service banners from open ports
 sudo sondare tcp --target 192.168.1.1:1-1024 --banners
 
+# Scan an IPv6 host (quote brackets to prevent shell glob expansion)
+sudo sondare tcp --target '[fe80::dead:beef]:1-1024'
+
 # UDP scan of common ports
 sudo sondare udp --target 192.168.1.1:1-1024
+
+# UDP scan of an IPv6 host
+sudo sondare udp --target '[fe80::dead:beef]:1-1024'
 
 # Fingerprint a host OS (auto-probes common ports)
 sudo sondare os --target 192.168.1.1
@@ -123,17 +131,26 @@ sudo sondare os --target 192.168.1.1
 # Fingerprint using a known-open port
 sudo sondare os --target 192.168.1.1 --port 80
 
+# Fingerprint an IPv6 host
+sudo sondare os --target fe80::dead:beef
+
 # Watch for new hosts and ARP spoofing attempts
 sudo sondare monitor arp
+
+# Watch for new IPv6 hosts and NDP spoofing (neighbor cache poisoning) attempts
+sudo sondare monitor ndp
 
 # Monitor all hosts on the subnet (auto-discovers new/departed hosts)
 sudo sondare monitor hosts
 
-# Monitor specific hosts every 10s
-sudo sondare monitor hosts --hosts 192.168.1.1 192.168.1.50 -i 10
+# Monitor specific hosts every 10s (IPv6 addresses are detected automatically)
+sudo sondare monitor hosts --hosts 192.168.1.1 fe80::dead:beef -i 10
 
 # Watch for port state changes on a target
 sudo sondare monitor ports --target 192.168.1.1:1-1024
+
+# Watch ports on an IPv6 target
+sudo sondare monitor ports --target '[fe80::dead:beef]:1-1024'
 
 # Live packet capture (all traffic)
 sudo sondare monitor traffic
@@ -158,6 +175,9 @@ sudo sondare trace --target 8.8.8.8
 
 # Trace with a longer per-hop timeout and a cap of 20 hops
 sudo sondare trace --target 8.8.8.8 -t 5 --max-hops 20
+
+# Trace to an IPv6 host
+sudo sondare trace --target fe80::dead:beef
 
 # Discover mDNS/Bonjour services (AirPlay, SSH, SMB, Chromecast, HomeKit, …)
 sudo sondare mdns
@@ -204,7 +224,8 @@ ndp:
   --json                 JSON output
 
 tcp:
-  --target          Target as ip, ip:port, or ip:start-end (default: local machine, ports 1-1000)
+  --target          Target as ip, ip:port, or ip:start-end; IPv6 with ports: '[fe80::1]:80'
+                    (quote brackets in shell); default: local machine, ports 1-1000
   -t, --timeout     Packet timeout in seconds (default: 3)
   -th, --threads    Number of threads (default: 20)
   -r, --retries     Retries per port on no response (default: 2)
@@ -213,14 +234,15 @@ tcp:
   --json            JSON output
 
 udp:
-  --target          Target as ip, ip:port, or ip:start-end (default: local machine, ports 1-1000)
+  --target          Target as ip, ip:port, or ip:start-end; IPv6 with ports: '[fe80::1]:80'
+                    (quote brackets in shell); default: local machine, ports 1-1000
   -t, --timeout     Packet timeout in seconds (default: 3)
   -th, --threads    Number of threads (default: 20)
   -r, --retries     Retries per port on no response (default: 2)
   -v, --verbose     Verbose scapy output
 
 os:
-  --target          Target IP address (required)
+  --target          Target IPv4 or IPv6 address (required)
   --port            Port to probe; omit to auto-try common ports in parallel
   -t, --timeout     Timeout per probe in seconds (default: 3)
   -v, --verbose     Verbose scapy output
@@ -229,15 +251,21 @@ monitor arp:
   -t, --timeout     Timeout for initial ARP seed scan (default: 5)
   -v, --verbose     Verbose scapy output
 
+monitor ndp:
+  -t, --timeout     Timeout for initial ICMPv6 multicast seed sweep (default: 5)
+  -v, --verbose     Verbose scapy output
+
 monitor hosts:
-  --hosts           Hosts to monitor; omit to auto-discover via ARP each round
+  --hosts           Hosts to monitor; IPv4 and IPv6 addresses accepted; omit to
+                    auto-discover via ARP each round
   -i, --interval    Seconds between ping rounds (default: 30)
   -t, --timeout     Ping timeout in seconds (default: 2)
   -th, --threads    Concurrent pings per round (default: 50)
   -v, --verbose     Verbose scapy output
 
 monitor ports:
-  --target          Target as ip, ip:port, or ip:start-end (default: local machine, ports 1-1000)
+  --target          Target as ip, ip:port, or ip:start-end; IPv6 with ports: '[fe80::1]:80'
+                    (quote brackets in shell); default: local machine, ports 1-1000
   -i, --interval    Seconds between scans (default: 60)
   -t, --timeout     Timeout per probe in seconds (default: 3)
   -th, --threads    Concurrent probes per scan (default: 20)
@@ -250,7 +278,7 @@ monitor traffic:
 graph:
   --fingerprint     OS-fingerprint each discovered host (TCP SYN, falls back to ICMP TTL)
   -o, --output      Output path: .html for interactive graph, .json for topology data (default: sondare_graph.html)
-  -t, --timeout     ARP scan timeout in seconds (default: 3)
+  -t, --timeout     ARP + NDP scan timeout in seconds (default: 3)
   -th, --threads    Concurrent fingerprint probes (default: 10)
   -v, --verbose     Verbose scapy output
 
@@ -260,19 +288,23 @@ mdns:
   --json            JSON output
 
 trace:
-  --target          Target IP address (required)
+  --target          Target IPv4 or IPv6 address (required)
   -t, --timeout     Timeout per hop in seconds (default: 3)
   --max-hops        Maximum number of hops (default: 30)
   -v, --verbose     Verbose scapy output
   --json            JSON output
 
 tls:
-  --target          Target as ip or ip:port (default ports: 443, 8443)
+  --target          Target as ip or ip:port; IPv6 with port: '[fe80::1]:443'
+                    (quote brackets in shell); default ports: 443, 8443
   -t, --timeout     Connection timeout in seconds (default: 5)
   -v, --verbose     Verbose mode
   --json            JSON output
 ```
 
-> **Note:** `trace` uses ICMP echo probes. Hosts that block ICMP will show `*` for all hops.
->
-> **Note:** `ndp` sends ICMPv6 echo requests to the all-nodes multicast `ff02::1` and merges results with the OS NDP neighbor cache. Hosts that block ICMPv6 pings may still appear via the cache if they were recently reachable.
+## Notes
+
+- **`trace`** uses ICMP/ICMPv6 echo probes. Hosts that block ICMP will show `*` for all hops.
+- **`ndp` / `monitor ndp`** send ICMPv6 echo requests to the all-nodes multicast `ff02::1` and merge results with the OS NDP neighbor cache. Hosts that block ICMPv6 pings may still appear via the cache if they were recently reachable.
+- **`graph`** runs ARP and NDP discovery in parallel. Devices with both IPv4 and IPv6 addresses are merged by MAC and appear as a single node in the graph.
+- **IPv6 with ports** — use bracket notation and quote it to prevent shell glob expansion: `'[fe80::1]:443'`. Applies to `tcp`, `udp`, `monitor ports`, and `tls`.
