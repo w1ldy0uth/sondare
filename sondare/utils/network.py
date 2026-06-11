@@ -8,6 +8,9 @@ import psutil
 from concurrent.futures import ThreadPoolExecutor
 
 
+IPV6_ALL_NODES_MAC  = "33:33:00:00:00:01"
+IPV6_ALL_NODES_ADDR = "ff02::1"
+
 _MDNS_SCAN_SERVICES = [
     "_http._tcp.local.",
     "_https._tcp.local.",

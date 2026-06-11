@@ -16,10 +16,8 @@ from sondare.services.fingerprint import OsFingerprinter
 from sondare.utils.network import (
     get_subnet, get_network_interface, get_ip_address,
     get_ipv6_link_local, read_ndp_cache, get_mac_vendor,
+    IPV6_ALL_NODES_MAC, IPV6_ALL_NODES_ADDR,
 )
-
-_ALL_NODES_MAC  = "33:33:00:00:00:01"
-_ALL_NODES_ADDR = "ff02::1"
 
 _HTML_TEMPLATE = """\
 <!DOCTYPE html>
@@ -200,8 +198,8 @@ class NetworkGraph:
         iface = get_network_interface()
         local_v6 = (get_ipv6_link_local(iface) or "").lower()
         pkt = (
-            Ether(dst=_ALL_NODES_MAC)
-            / IPv6(dst=_ALL_NODES_ADDR)
+            Ether(dst=IPV6_ALL_NODES_MAC)
+            / IPv6(dst=IPV6_ALL_NODES_ADDR)
             / ICMPv6EchoRequest(id=0x5afe, seq=1)
         )
         ans = srp(

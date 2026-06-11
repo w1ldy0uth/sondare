@@ -5,10 +5,10 @@ import threading
 from datetime import datetime
 from scapy.all import Ether, IPv6, ICMPv6EchoRequest, ICMPv6EchoReply, ICMPv6ND_NA, srp, sniff
 from scapy.packet import Packet
-from sondare.utils.network import get_network_interface, get_ipv6_link_local, read_ndp_cache
-
-_ALL_NODES_MAC  = "33:33:00:00:00:01"
-_ALL_NODES_ADDR = "ff02::1"
+from sondare.utils.network import (
+    get_network_interface, get_ipv6_link_local, read_ndp_cache,
+    IPV6_ALL_NODES_MAC, IPV6_ALL_NODES_ADDR,
+)
 
 
 class NdpWatcher:
@@ -31,8 +31,8 @@ class NdpWatcher:
     def _seed(self) -> None:
         print(f"Seeding from ICMPv6 multicast sweep on {self._iface} ...", end=" ", flush=True)
         pkt = (
-            Ether(dst=_ALL_NODES_MAC)
-            / IPv6(dst=_ALL_NODES_ADDR)
+            Ether(dst=IPV6_ALL_NODES_MAC)
+            / IPv6(dst=IPV6_ALL_NODES_ADDR)
             / ICMPv6EchoRequest(id=0x5afe, seq=1)
         )
         ans = srp(
