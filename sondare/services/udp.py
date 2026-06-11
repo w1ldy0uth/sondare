@@ -26,7 +26,8 @@ class Udp:
         self._lock = threading.Lock()
         self.q: Queue[int] = Queue()
 
-        self.open_ports: list[Port] = []
+        self._open_ports: list[Port] = []
+        self._results: list[Port] = []
         self._done = 0
         self._total = port_end - port_begin + 1
 
@@ -52,7 +53,7 @@ class Udp:
             if rsp is None:
                 if attempt == self.retries:
                     with self._lock:
-                        self.open_ports.append(Port(ip=self.ip, port=target_port))
+                        self._open_ports.append(Port(ip=self.ip, port=target_port))
                 continue
 
             if self._ipv6:
@@ -66,7 +67,7 @@ class Udp:
                         return  # port unreachable — closed
 
             with self._lock:
-                self.open_ports.append(Port(ip=self.ip, port=target_port))
+                self._open_ports.append(Port(ip=self.ip, port=target_port))
             return
 
     def _threader(self) -> None:
@@ -96,6 +97,10 @@ class Udp:
         self.q.join()
         print()
 
+        self._results = [
+            Port(ip=p.ip, port=p.port, service=get_port_service(p.port, "udp"))
+            for p in sorted(self._open_ports, key=lambda p: p.port)
+        ]
+
     def get_results(self) -> list[Port]:
-        """Returns open|filtered ports discovered by scan(), sorted by port number."""
-        return [Port(ip=p.ip, port=p.port, service=get_port_service(p.port, "udp")) for p in sorted(self.open_ports, key=lambda p: p.port)]
+        return self._results

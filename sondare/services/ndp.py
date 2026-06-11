@@ -16,7 +16,7 @@ _ALL_NODES_ADDR = "ff02::1"
 class Ndp:
     """Discovers IPv6 hosts on the local link via ICMPv6 multicast ping + NDP neighbor cache."""
 
-    def __init__(self, verbose: bool, timeout: int, resolve_hostname: bool = False) -> None:
+    def __init__(self, verbose: bool, timeout: float, resolve_hostname: bool = False) -> None:
         self.verbose = verbose
         self.timeout = timeout
         self.resolve_hostname = resolve_hostname
