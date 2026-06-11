@@ -37,9 +37,10 @@ class ArpWatcher:
             self._hosts[rcv.psrc] = rcv.hwsrc
         print(f"found {len(self._hosts)} host(s)")
         if self._hosts:
-            print("  " + "IP".ljust(16) + "MAC")
+            ip_w = max(len(ip) for ip in self._hosts) + 2
+            print("  " + "IP".ljust(ip_w) + "MAC")
             for ip, mac in sorted(self._hosts.items()):
-                print(f"  {ip.ljust(16)}{mac}")
+                print(f"  {ip.ljust(ip_w)}{mac}")
 
     def _handle(self, pkt: Packet) -> None:
         arp = pkt.getlayer(ARP)

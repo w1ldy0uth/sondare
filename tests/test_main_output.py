@@ -105,7 +105,7 @@ class TestPingJsonOutput:
 
         output = capsys.readouterr().out
         parsed = json.loads(output.strip().splitlines()[-1])
-        assert parsed == {"hosts": ["192.168.1.2", "192.168.1.5"]}
+        assert parsed == {"hosts": [{"ip": "192.168.1.2"}, {"ip": "192.168.1.5"}]}
 
     def test_no_json_flag_prints_alive(self, capsys):
         args = _args(scan_method="ping", json=False, resolve_hostname=False)
