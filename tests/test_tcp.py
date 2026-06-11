@@ -31,7 +31,7 @@ class TestCheckPort:
              patch("random.randint", return_value=54321):
             scanner.check_port(80)
 
-        assert Port(ip="10.0.0.1", port=80) in scanner.open_ports
+        assert Port(ip="10.0.0.1", port=80) in scanner._open_ports
 
     def test_syn_ack_sends_rst(self):
         scanner = _make_scanner()
@@ -48,7 +48,7 @@ class TestCheckPort:
              patch("sondare.services.tcp.sr"):
             scanner.check_port(80)
 
-        assert scanner.open_ports == []
+        assert scanner._open_ports == []
 
     def test_rst_stops_retrying(self):
         scanner = _make_scanner(retries=3)
@@ -65,7 +65,7 @@ class TestCheckPort:
             scanner.check_port(80)
 
         assert mock_sr1.call_count == 3
-        assert scanner.open_ports == []
+        assert scanner._open_ports == []
 
     def test_none_then_syn_ack_adds_port(self):
         scanner = _make_scanner(retries=2)
@@ -75,7 +75,7 @@ class TestCheckPort:
              patch("random.randint", return_value=54321):
             scanner.check_port(80)
 
-        assert Port(ip="10.0.0.1", port=80) in scanner.open_ports
+        assert Port(ip="10.0.0.1", port=80) in scanner._open_ports
 
 
 class TestGetResults:
@@ -83,28 +83,23 @@ class TestGetResults:
         scanner = _make_scanner()
         assert scanner.get_results() == []
 
-    def test_returns_open_ports_after_check(self):
-        scanner = _make_scanner(port_begin=22, port_end=80)
-        with patch("sondare.services.tcp.sr1", side_effect=[
-            _tcp_response(SYN_ACK),  # port 22 open
-            _tcp_response(RST),      # port 80 closed (skipping range interior)
-            _tcp_response(SYN_ACK),  # port 80 open
-        ]), patch("sondare.services.tcp.sr"), \
-           patch("random.randint", return_value=54321):
-            scanner.check_port(22)
-            scanner.check_port(443)
-            scanner.check_port(80)
-
-        assert set(scanner.get_results()) == {Port("10.0.0.1", 22, service="ssh"), Port("10.0.0.1", 80, service="http")}
-
-    def test_results_sorted_by_port(self):
-        scanner = _make_scanner(port_begin=22, port_end=443)
+    def test_get_results_after_scan_includes_service_name(self):
+        scanner = _make_scanner(port_begin=80, port_end=80)
         with patch("sondare.services.tcp.sr1", return_value=_tcp_response(SYN_ACK)), \
              patch("sondare.services.tcp.sr"), \
+             patch("sondare.services.tcp.warm_arp_cache"), \
              patch("random.randint", return_value=54321):
-            scanner.check_port(443)
-            scanner.check_port(22)
-            scanner.check_port(80)
+            scanner.scan()
+
+        assert scanner.get_results() == [Port("10.0.0.1", 80, service="http")]
+
+    def test_results_sorted_by_port(self):
+        scanner = _make_scanner(port_begin=22, port_end=80)
+        with patch("sondare.services.tcp.sr1", return_value=_tcp_response(SYN_ACK)), \
+             patch("sondare.services.tcp.sr"), \
+             patch("sondare.services.tcp.warm_arp_cache"), \
+             patch("random.randint", return_value=54321):
+            scanner.scan()
 
         ports = [p.port for p in scanner.get_results()]
         assert ports == sorted(ports)
@@ -228,7 +223,7 @@ class TestBannersIntegration:
             scanner.scan()
 
         mock_grab.assert_called_once_with("10.0.0.1", 80, scanner._timeout)
-        assert scanner.open_ports == [Port(ip="10.0.0.1", port=80, banner="SSH-2.0-OpenSSH_8.9")]
+        assert scanner._open_ports == [Port(ip="10.0.0.1", port=80, banner="SSH-2.0-OpenSSH_8.9")]
 
     def test_no_banners_flag_leaves_banner_none(self):
         scanner = _make_scanner(banners=False)
@@ -240,7 +235,7 @@ class TestBannersIntegration:
             scanner.scan()
 
         mock_grab.assert_not_called()
-        assert scanner.open_ports == [Port(ip="10.0.0.1", port=80, banner=None)]
+        assert scanner._open_ports == [Port(ip="10.0.0.1", port=80, banner=None)]
 
 
 class TestIpv6Tcp:

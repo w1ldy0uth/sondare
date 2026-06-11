@@ -30,7 +30,8 @@ class Tcp:
         self._lock = threading.Lock()
         self.q: Queue[int] = Queue()
 
-        self.open_ports: list[Port] = []
+        self._open_ports: list[Port] = []
+        self._results: list[Port] = []
         self._done = 0
         self._total = port_end - port_begin + 1
 
@@ -61,7 +62,7 @@ class Tcp:
                 if rsp.getlayer(TCP).flags == 0x12:  # SYN-ACK: open
                     sr(ip_layer / TCP(sport=source_port, dport=target_port, flags="R"), timeout=1, verbose=False, promisc=False)
                     with self._lock:
-                        self.open_ports.append(Port(ip=self.ip, port=target_port))
+                        self._open_ports.append(Port(ip=self.ip, port=target_port))
                 return  # RST or anything else: definitive answer, stop retrying
 
     def _threader(self) -> None:
@@ -92,11 +93,15 @@ class Tcp:
         print()
 
         if self.banners:
-            self.open_ports = [
+            self._open_ports = [
                 Port(ip=p.ip, port=p.port, banner=grab_banner(p.ip, p.port, self._timeout))
-                for p in self.open_ports
+                for p in self._open_ports
             ]
 
+        self._results = [
+            Port(ip=p.ip, port=p.port, banner=p.banner, service=get_port_service(p.port))
+            for p in sorted(self._open_ports, key=lambda p: p.port)
+        ]
+
     def get_results(self) -> list[Port]:
-        """Returns open ports discovered by scan(), sorted by port number."""
-        return [Port(ip=p.ip, port=p.port, banner=p.banner, service=get_port_service(p.port)) for p in sorted(self.open_ports, key=lambda p: p.port)]
+        return self._results

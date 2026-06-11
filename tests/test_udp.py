@@ -35,21 +35,21 @@ class TestCheckPort:
         with patch("sondare.services.udp.sr1", return_value=_icmp_response(PORT_UNREACHABLE_TYPE, PORT_UNREACHABLE_CODE)):
             scanner.check_port(53)
 
-        assert scanner.open_ports == []
+        assert scanner._open_ports == []
 
     def test_icmp_other_type_marks_open(self):
         scanner = _make_scanner()
         with patch("sondare.services.udp.sr1", return_value=_icmp_response(3, 1)):  # net unreachable, not port
             scanner.check_port(53)
 
-        assert Port(ip="10.0.0.1", port=53) in scanner.open_ports
+        assert Port(ip="10.0.0.1", port=53) in scanner._open_ports
 
     def test_udp_response_marks_open(self):
         scanner = _make_scanner()
         with patch("sondare.services.udp.sr1", return_value=_udp_response()):
             scanner.check_port(53)
 
-        assert Port(ip="10.0.0.1", port=53) in scanner.open_ports
+        assert Port(ip="10.0.0.1", port=53) in scanner._open_ports
 
     def test_no_response_exhausts_retries_then_marks_open_filtered(self):
         scanner = _make_scanner(retries=2)
@@ -57,7 +57,7 @@ class TestCheckPort:
             scanner.check_port(53)
 
         assert mock_sr1.call_count == 3  # initial + 2 retries
-        assert Port(ip="10.0.0.1", port=53) in scanner.open_ports
+        assert Port(ip="10.0.0.1", port=53) in scanner._open_ports
 
     def test_no_response_does_not_add_port_until_retries_exhausted(self):
         scanner = _make_scanner(retries=2)
@@ -73,7 +73,7 @@ class TestCheckPort:
         with patch("sondare.services.udp.sr1", side_effect=side_effect):
             scanner.check_port(53)
 
-        assert scanner.open_ports == []  # closed on last attempt
+        assert scanner._open_ports == []  # closed on last attempt
 
     def test_icmp_unreachable_stops_retrying(self):
         scanner = _make_scanner(retries=3)
@@ -81,7 +81,7 @@ class TestCheckPort:
             scanner.check_port(53)
 
         assert mock_sr1.call_count == 1
-        assert scanner.open_ports == []
+        assert scanner._open_ports == []
 
     def test_udp_response_stops_retrying(self):
         scanner = _make_scanner(retries=3)
@@ -89,7 +89,7 @@ class TestCheckPort:
             scanner.check_port(53)
 
         assert mock_sr1.call_count == 1
-        assert Port(ip="10.0.0.1", port=53) in scanner.open_ports
+        assert Port(ip="10.0.0.1", port=53) in scanner._open_ports
 
 
 class TestGetResults:
@@ -97,29 +97,19 @@ class TestGetResults:
         scanner = _make_scanner()
         assert scanner.get_results() == []
 
-    def test_returns_open_filtered_ports_after_check(self):
-        scanner = _make_scanner(port_begin=53, port_end=69)
-        responses = {
-            53: None,                                                            # open|filtered
-            54: _icmp_response(PORT_UNREACHABLE_TYPE, PORT_UNREACHABLE_CODE),   # closed
-            69: _udp_response(),                                                 # open
-        }
+    def test_get_results_after_scan_includes_service_name(self):
+        scanner = _make_scanner(port_begin=53, port_end=53)
+        with patch("sondare.services.udp.sr1", return_value=None), \
+             patch("sondare.services.udp.warm_arp_cache"):
+            scanner.scan()
 
-        for port, rsp in responses.items():
-            with patch("sondare.services.udp.sr1", return_value=rsp):
-                scanner.check_port(port)
-
-        assert set(scanner.get_results()) == {Port("10.0.0.1", 53, service="domain"), Port("10.0.0.1", 69, service="tftp")}
+        assert scanner.get_results() == [Port("10.0.0.1", 53, service="domain")]
 
     def test_results_sorted_by_port(self):
-        scanner = _make_scanner(port_begin=53, port_end=123)
-        responses = {
-            123: None,            # open|filtered (NTP)
-            53: _udp_response(),  # open (DNS)
-        }
-        for port, rsp in responses.items():
-            with patch("sondare.services.udp.sr1", return_value=rsp):
-                scanner.check_port(port)
+        scanner = _make_scanner(port_begin=53, port_end=69)
+        with patch("sondare.services.udp.sr1", return_value=None), \
+             patch("sondare.services.udp.warm_arp_cache"):
+            scanner.scan()
 
         ports = [p.port for p in scanner.get_results()]
         assert ports == sorted(ports)
@@ -151,7 +141,7 @@ class TestIpv6Udp:
              patch("sondare.services.udp.warm_arp_cache"):
             scanner.check_port(53)
 
-        assert scanner.open_ports == []
+        assert scanner._open_ports == []
 
     def test_ipv6_scan_skips_arp_cache(self):
         scanner = Udp(verbose=False, ip="fe80::1", port_begin=53, port_end=53,
