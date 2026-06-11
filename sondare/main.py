@@ -410,11 +410,11 @@ def main() -> None:
             results = scanner.get_results()
 
             if args.json:
-                if args.resolve_hostname:
-                    hostnames = scanner.get_hostnames()
-                    print(json.dumps({"hosts": [{"ip": ip, "hostname": hostnames[ip]} for ip in results]}))
-                else:
-                    print(json.dumps({"hosts": results}))
+                hostnames = scanner.get_hostnames() if args.resolve_hostname else {}
+                print(json.dumps({"hosts": [
+                    {"ip": ip, **({"hostname": hostnames[ip]} if hostnames.get(ip) else {})}
+                    for ip in results
+                ]}))
             else:
                 hostnames = scanner.get_hostnames() if args.resolve_hostname else {}
                 for ip in results:
@@ -562,10 +562,12 @@ def main() -> None:
         elif args.scan_method == "trace":
             print(f"Tracing route to {args.target}, max {args.max_hops} hops\n")
 
+            _ip_col = 45 if network.is_ipv6_address(args.target) else 18
+
             def _fmt_hop(hop: "Hop") -> str:
                 if hop.ip is None:
                     return f"{hop.ttl:>3}  *"
-                return f"{hop.ttl:>3}  {hop.ip:<18} {hop.rtt_ms:.2f} ms"
+                return f"{hop.ttl:>3}  {hop.ip:<{_ip_col}} {hop.rtt_ms:.2f} ms"
 
             on_hop = None if args.json else lambda h: print(_fmt_hop(h))
             scanner = Traceroute(
@@ -638,9 +640,12 @@ def main() -> None:
                 if not results:
                     print("No mDNS services found.")
                 else:
-                    print("HOSTNAME".ljust(35) + "IP".ljust(18) + "SERVICE".ljust(30) + "PORT")
+                    host_col    = max((len(r.hostname) for r in results), default=8) + 2
+                    ip_col      = max((len(r.ip) for r in results), default=2) + 2
+                    service_col = max((len(r.service) for r in results), default=7) + 2
+                    print("HOSTNAME".ljust(host_col) + "IP".ljust(ip_col) + "SERVICE".ljust(service_col) + "PORT")
                     for r in results:
-                        print(f"{r.hostname.ljust(35)}{r.ip.ljust(18)}{r.service.ljust(30)}{r.port}")
+                        print(f"{r.hostname.ljust(host_col)}{r.ip.ljust(ip_col)}{r.service.ljust(service_col)}{r.port}")
 
     except KeyboardInterrupt:
         print("\nStopped.")
