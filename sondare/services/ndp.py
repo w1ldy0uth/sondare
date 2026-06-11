@@ -5,12 +5,8 @@ from scapy.all import Ether, IPv6, ICMPv6EchoRequest, ICMPv6EchoReply, srp
 from sondare.models import Host
 from sondare.utils.network import (
     get_network_interface, get_mac_vendor, get_ipv6_link_local,
-    read_ndp_cache, resolve_hostnames,
+    read_ndp_cache, resolve_hostnames, IPV6_ALL_NODES_MAC, IPV6_ALL_NODES_ADDR,
 )
-
-# Ethernet and IPv6 all-nodes multicast addresses (RFC 4291 §2.7.1).
-_ALL_NODES_MAC  = "33:33:00:00:00:01"
-_ALL_NODES_ADDR = "ff02::1"
 
 
 class Ndp:
@@ -31,11 +27,11 @@ class Ndp:
         local_ip = (get_ipv6_link_local(iface) or "").lower()
 
         pkt = (
-            Ether(dst=_ALL_NODES_MAC) /
-            IPv6(dst=_ALL_NODES_ADDR) /
+            Ether(dst=IPV6_ALL_NODES_MAC) /
+            IPv6(dst=IPV6_ALL_NODES_ADDR) /
             ICMPv6EchoRequest(id=0x5afe, seq=1)
         )
-        print(f"Scanning {_ALL_NODES_ADDR} on {iface} ...", end=" ", flush=True)
+        print(f"Scanning {IPV6_ALL_NODES_ADDR} on {iface} ...", end=" ", flush=True)
         answer = srp(
             pkt,
             iface=iface,

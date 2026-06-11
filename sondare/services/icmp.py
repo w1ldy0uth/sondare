@@ -3,10 +3,10 @@
 
 import ipaddress
 from scapy.all import IP, ICMP, IPv6, ICMPv6EchoRequest, ICMPv6EchoReply, Ether, sr, sr1, srp
-from sondare.utils.network import get_subnet, get_network_interface, get_ipv6_link_local, is_ipv6_address, resolve_hostnames
-
-_ALL_NODES_MAC  = "33:33:00:00:00:01"
-_ALL_NODES_ADDR = "ff02::1"
+from sondare.utils.network import (
+    get_subnet, get_network_interface, get_ipv6_link_local, is_ipv6_address,
+    resolve_hostnames, IPV6_ALL_NODES_MAC, IPV6_ALL_NODES_ADDR,
+)
 
 
 class Ping:
@@ -89,11 +89,11 @@ class Ping:
         iface    = get_network_interface()
         local_ip = (get_ipv6_link_local(iface) or "").lower()
         pkt = (
-            Ether(dst=_ALL_NODES_MAC) /
-            IPv6(dst=_ALL_NODES_ADDR) /
+            Ether(dst=IPV6_ALL_NODES_MAC) /
+            IPv6(dst=IPV6_ALL_NODES_ADDR) /
             ICMPv6EchoRequest(id=0x5afe, seq=1)
         )
-        print(f"Scanning {_ALL_NODES_ADDR} on {iface} ...", end=" ", flush=True)
+        print(f"Scanning {IPV6_ALL_NODES_ADDR} on {iface} ...", end=" ", flush=True)
         ans, _ = srp(pkt, iface=iface, timeout=self._timeout, verbose=self.verbose, promisc=False, multi=True)
         print("done")
         seen: set[str] = set()
