@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: UTF-8 -*-
 
-from scapy.all import ARP, srp, Ether
+from sondare import _sondare
 from sondare.models import Host
 from sondare.utils.network import get_subnet, get_network_interface, get_mac_vendor, read_arp_cache, resolve_hostnames
 
@@ -20,10 +20,11 @@ class Arp:
         cidr = get_subnet()
         iface = get_network_interface()
         print(f"Scanning {cidr} on {iface} ...", end=" ", flush=True)
-        answer = srp(Ether(dst="ff:ff:ff:ff:ff:ff") / ARP(pdst=cidr), iface=iface, timeout=self.timeout, verbose=self.verbose, promisc=False)[0]
+        grace_ms = max(200, int(self.timeout * 1000 // 2))
+        active = _sondare.arp_sweep_v4(iface, cidr, 500, grace_ms)
         print("done")
 
-        hosts = [Host(ip=rcv.psrc, mac=rcv.hwsrc) for _, rcv in answer]
+        hosts = [Host(ip=ip, mac=mac) for ip, mac in active]
         seen = {h.ip for h in hosts}
         for ip, mac in read_arp_cache(cidr).items():
             if ip not in seen:
