@@ -1,0 +1,13 @@
+[package]
+name    = "sondare-py"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[lib]
+name       = "_sondare"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3           = { version = "0.23", features = ["extension-module", "abi3-py310"] }
+sondare-engine = { workspace = true }

@@ -1,0 +1,9 @@
+[package]
+name    = "sondare-engine"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+sondare-codec    = { workspace = true }
+sondare-datalink = { workspace = true }

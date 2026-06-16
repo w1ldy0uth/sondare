@@ -1,0 +1,19 @@
+[workspace]
+members = [
+    "crates/codec",
+    "crates/datalink",
+    "crates/engine",
+    "crates/py",
+    "crates/cli",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Ivan Shurygin <shurygin1vs@gmail.com>"]
+
+[workspace.dependencies]
+sondare-codec    = { path = "crates/codec" }
+sondare-datalink = { path = "crates/datalink" }
+sondare-engine   = { path = "crates/engine" }

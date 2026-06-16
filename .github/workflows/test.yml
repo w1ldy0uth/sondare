@@ -2,9 +2,9 @@ name: Tests
 
 on:
   push:
-    branches: ["master"]
+    branches: ["master", "dev", "v1.2.0_scrapy_snake"]
   pull_request:
-    branches: ["master"]
+    branches: ["master", "dev"]
 
 jobs:
   test:
@@ -15,6 +15,7 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}

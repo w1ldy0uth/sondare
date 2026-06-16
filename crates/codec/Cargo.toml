@@ -1,0 +1,5 @@
+[package]
+name    = "sondare-codec"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true

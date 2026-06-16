@@ -1,11 +1,11 @@
 [build-system]
-requires = ["setuptools>=68"]
-build-backend = "setuptools.build_meta"
+requires = ["maturin>=1.5,<2"]
+build-backend = "maturin"
 
 [project]
 name = "sondare"
 version = "1.1.1"
-description = "Probe and monitor local network hosts — ARP, NDP, ICMP, TCP, UDP, OS fingerprinting, TLS probing, and network graph."
+description = "Probe and monitor local network hosts - ARP, NDP, ICMP, TCP, UDP, OS fingerprinting, TLS probing, and network graph."
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
@@ -42,14 +42,13 @@ classifiers = [
 Repository = "https://github.com/w1ldy0uth/sondare"
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "build>=1.0", "twine>=5.0"]
+dev = ["pytest>=8.0", "twine>=5.0"]
 
 [project.scripts]
 sondare = "sondare.main:main"
 
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["sondare*"]
-
-[tool.setuptools.package-data]
-sondare = ["py.typed", "static/vis-network.min.js"]
+[tool.maturin]
+manifest-path   = "crates/py/Cargo.toml"
+python-source   = "."
+module-name     = "sondare._sondare"
+features        = ["pyo3/extension-module", "pyo3/abi3-py310"]
