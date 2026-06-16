@@ -1,1 +1,6 @@
-// Phase 3: stateless TX/RX split, identity-in-packet validation, rate limiter, retransmit
+mod error;
+pub mod rate;
+pub mod sweep;
+
+pub use error::EngineError;
+pub use sweep::{sweep, SweepConfig};

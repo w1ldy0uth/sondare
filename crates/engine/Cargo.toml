@@ -7,3 +7,4 @@ authors.workspace = true
 [dependencies]
 sondare-codec    = { workspace = true }
 sondare-datalink = { workspace = true }
+pnet_datalink    = { workspace = true }
