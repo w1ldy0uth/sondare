@@ -17,3 +17,7 @@ authors = ["Ivan Shurygin <shurygin1vs@gmail.com>"]
 sondare-codec    = { path = "crates/codec" }
 sondare-datalink = { path = "crates/datalink" }
 sondare-engine   = { path = "crates/engine" }
+
+pnet            = "0.35"
+pnet_datalink   = "0.35"
+pnet_packet     = "0.35"

@@ -5,4 +5,8 @@ edition.workspace = true
 authors.workspace = true
 
 [dependencies]
+sondare-codec   = { workspace = true }
+pnet_datalink   = { workspace = true }
+
+[dev-dependencies]
 sondare-codec = { workspace = true }
