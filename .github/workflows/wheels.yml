@@ -2,7 +2,7 @@ name: Wheels
 
 on:
   push:
-    branches: ["dev", "v1.2.0_scrapy_snake"]
+    branches: ["master", "dev", "v1.2.0_scrapy_snake"]
   pull_request:
     branches: ["master", "dev"]
 
@@ -17,20 +17,19 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Install maturin
+        run: pip install maturin
       - name: Build wheel
-        uses: PyO3/maturin-action@v1
-        with:
-          command: build
-          args: --release --out dist
-          manylinux: auto
+        run: maturin build --release --out dist --manifest-path crates/py/Cargo.toml
       - name: Install and smoke-test
         shell: bash
         run: |
-          pip install --find-links dist sondare --force-reinstall
-          python -c "import sondare._sondare; print('sondare._sondare ok')"
+          pip install dist/*.whl
+          cd "$RUNNER_TEMP" && python -c "import sondare._sondare; print('sondare._sondare ok')"
       - uses: actions/upload-artifact@v4
         with:
           name: wheels-${{ matrix.os }}
