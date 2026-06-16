@@ -2,7 +2,8 @@
 # -*- coding: UTF-8 -*-
 
 import ipaddress
-from scapy.all import IP, ICMP, IPv6, ICMPv6EchoRequest, ICMPv6EchoReply, Ether, sr, sr1, srp
+from scapy.all import IPv6, ICMPv6EchoRequest, ICMPv6EchoReply, Ether, sr1, srp
+from sondare import _sondare
 from sondare.utils.network import (
     get_subnet, get_network_interface, get_ipv6_link_local, is_ipv6_address,
     resolve_hostnames, IPV6_ALL_NODES_MAC, IPV6_ALL_NODES_ADDR,
@@ -58,13 +59,11 @@ class Ping:
         subnet_scan = self._target is None
         if subnet_scan:
             print(f"Scanning {len(self.hosts)} hosts ...", end=" ", flush=True)
-        packets = [IP(dst=h) / ICMP() for h in self.hosts]
-        answered, _ = sr(packets, timeout=self._timeout, verbose=self.verbose, promisc=False, inter=0)
+        iface = get_network_interface()
+        grace_ms = max(200, int(self._timeout * 1000 // 2))
+        self.results = _sondare.icmp_sweep_v4(iface, self.hosts, 500, grace_ms)
         if subnet_scan:
             print("done")
-        for sent, received in answered:
-            if received.haslayer(ICMP) and received.getlayer(ICMP).type == 0:
-                self.results.append(sent[IP].dst)
 
     def _scan_icmpv6(self) -> None:
         if self._multicast:

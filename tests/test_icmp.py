@@ -1,5 +1,4 @@
 from unittest.mock import patch, MagicMock
-from scapy.all import IP, ICMP
 from sondare.services.icmp import Ping
 from sondare.utils.network import is_ipv6_address as _is_ipv6
 
@@ -11,46 +10,35 @@ def _make_ping_scanner(net_mocks, ip="192.168.1.1"):
         return Ping(verbose=False, timeout=1)
 
 
-def _icmp_reply(icmp_type: int):
-    layer = MagicMock()
-    layer.type = icmp_type
-    pkt = MagicMock()
-    pkt.haslayer.return_value = True
-    pkt.getlayer.return_value = layer
-    return pkt
-
-
 class TestScan:
     def test_echo_reply_adds_host(self, net_mocks):
         scanner = _make_ping_scanner(net_mocks)
-        sent = IP(dst="192.168.1.2") / ICMP()
-        with patch("sondare.services.icmp.sr", return_value=([(sent, _icmp_reply(0))], [])), \
+        with patch("sondare.services.icmp._sondare.icmp_sweep_v4", return_value=["192.168.1.2"]), \
+             patch("sondare.services.icmp.get_network_interface", return_value="eth0"), \
              patch("builtins.print"):
             scanner.scan()
         assert "192.168.1.2" in scanner.results
 
     def test_unreachable_does_not_add_host(self, net_mocks):
         scanner = _make_ping_scanner(net_mocks)
-        sent = IP(dst="192.168.1.2") / ICMP()
-        with patch("sondare.services.icmp.sr", return_value=([(sent, _icmp_reply(3))], [])), \
+        with patch("sondare.services.icmp._sondare.icmp_sweep_v4", return_value=[]), \
+             patch("sondare.services.icmp.get_network_interface", return_value="eth0"), \
              patch("builtins.print"):
             scanner.scan()
         assert scanner.results == []
 
     def test_no_response_does_not_add_host(self, net_mocks):
         scanner = _make_ping_scanner(net_mocks)
-        with patch("sondare.services.icmp.sr", return_value=([], [])), \
+        with patch("sondare.services.icmp._sondare.icmp_sweep_v4", return_value=[]), \
+             patch("sondare.services.icmp.get_network_interface", return_value="eth0"), \
              patch("builtins.print"):
             scanner.scan()
         assert scanner.results == []
 
     def test_multiple_hosts_found(self, net_mocks):
         scanner = _make_ping_scanner(net_mocks)
-        answered = [
-            (IP(dst="192.168.1.2") / ICMP(), _icmp_reply(0)),
-            (IP(dst="192.168.1.3") / ICMP(), _icmp_reply(0)),
-        ]
-        with patch("sondare.services.icmp.sr", return_value=(answered, [])), \
+        with patch("sondare.services.icmp._sondare.icmp_sweep_v4", return_value=["192.168.1.2", "192.168.1.3"]), \
+             patch("sondare.services.icmp.get_network_interface", return_value="eth0"), \
              patch("builtins.print"):
             scanner.scan()
         assert scanner.results == ["192.168.1.2", "192.168.1.3"]
@@ -119,27 +107,28 @@ class TestIpv6Ping:
 
         assert scanner.get_results() == []
 
-    def test_ipv6_does_not_call_sr(self):
+    def test_ipv6_does_not_call_icmp_sweep_v4(self):
         with patch("sondare.services.icmp.sr1", return_value=None), \
-             patch("sondare.services.icmp.sr") as mock_sr, \
+             patch("sondare.services.icmp._sondare.icmp_sweep_v4") as mock_sweep, \
              patch("builtins.print"):
             scanner = Ping(verbose=False, timeout=1, target="fe80::1")
             scanner.scan()
 
-        mock_sr.assert_not_called()
+        mock_sweep.assert_not_called()
 
-    def test_ipv4_target_uses_icmpv4_not_sr1(self, net_mocks):
+    def test_ipv4_target_uses_icmp_sweep_v4_not_sr1(self, net_mocks):
         addrs, stats = net_mocks(ip="192.168.1.1")
         with patch("psutil.net_if_addrs", return_value=addrs), \
              patch("psutil.net_if_stats", return_value=stats):
             scanner = Ping(verbose=False, timeout=1, target="192.168.1.2")
 
-        with patch("sondare.services.icmp.sr", return_value=([], [])) as mock_sr, \
+        with patch("sondare.services.icmp._sondare.icmp_sweep_v4", return_value=[]) as mock_sweep, \
+             patch("sondare.services.icmp.get_network_interface", return_value="eth0"), \
              patch("sondare.services.icmp.sr1") as mock_sr1, \
              patch("builtins.print"):
             scanner.scan()
 
-        mock_sr.assert_called_once()
+        mock_sweep.assert_called_once()
         mock_sr1.assert_not_called()
 
     def test_ipv4_target_only_scans_that_host(self, net_mocks):
@@ -214,16 +203,16 @@ class TestIpv6MulticastScan:
 
         assert scanner.get_results() == ["fe80::cafe"]
 
-    def test_ipv6_flag_does_not_call_sr_or_sr1(self):
+    def test_ipv6_flag_does_not_call_icmp_sweep_v4(self):
         with patch("sondare.services.icmp.get_network_interface", return_value="eth0"), \
              patch("sondare.services.icmp.get_ipv6_link_local", return_value="fe80::1"), \
              patch("sondare.services.icmp.srp", return_value=([], None)), \
-             patch("sondare.services.icmp.sr") as mock_sr, \
+             patch("sondare.services.icmp._sondare.icmp_sweep_v4") as mock_sweep, \
              patch("sondare.services.icmp.sr1") as mock_sr1, \
              patch("builtins.print"):
             Ping(verbose=False, timeout=1, ipv6=True).scan()
 
-        mock_sr.assert_not_called()
+        mock_sweep.assert_not_called()
         mock_sr1.assert_not_called()
 
     def test_ipv6_flag_hosts_list_is_empty(self):
@@ -239,13 +228,13 @@ class TestResolveHostname:
     def test_scan_resolves_hostnames_when_flag_set(self, net_mocks):
         addrs, stats = net_mocks(ip="192.168.1.1")
         resolved = {"192.168.1.2": "desktop.local"}
-        sent = IP(dst="192.168.1.2") / ICMP()
 
         with patch("psutil.net_if_addrs", return_value=addrs), \
              patch("psutil.net_if_stats", return_value=stats):
             scanner = Ping(verbose=False, timeout=1, resolve_hostname=True)
 
-        with patch("sondare.services.icmp.sr", return_value=([(sent, _icmp_reply(0))], [])), \
+        with patch("sondare.services.icmp._sondare.icmp_sweep_v4", return_value=["192.168.1.2"]), \
+             patch("sondare.services.icmp.get_network_interface", return_value="eth0"), \
              patch("sondare.services.icmp.resolve_hostnames", return_value=resolved) as mock_resolve, \
              patch("builtins.print"):
             scanner.scan()
