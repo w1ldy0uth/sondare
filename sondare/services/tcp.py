@@ -6,9 +6,12 @@ import threading
 import time
 from queue import Queue
 from scapy.all import IP, IPv6, TCP, sr1, sr
+from sondare import _sondare
 from sondare.models import Port
 from sondare.utils.banners import grab_banner
-from sondare.utils.network import warm_arp_cache, get_port_service, is_ipv6_address
+from sondare.utils.network import (
+    warm_arp_cache, get_port_service, is_ipv6_address, get_network_interface,
+)
 from sondare.utils.adaptive_pool import AdaptivePool
 
 
@@ -77,27 +80,40 @@ class Tcp:
             self.q.task_done()
 
     def scan(self) -> None:
-        """Runs the threaded SYN scan."""
-        if not self._ipv6:
-            warm_arp_cache(self.ip)
+        """Runs the SYN scan."""
+        if self._ipv6:
+            self._scan_ipv6()
+        else:
+            self._scan_ipv4()
+
+    def _scan_ipv4(self) -> None:
+        warm_arp_cache(self.ip)
+        iface = get_network_interface()
+        ports = list(range(self.port_begin, self.port_end + 1))
+        pps = 500
+        grace_ms = 500  # LAN-only (MAC resolved via ARP); 500ms >> worst-case LAN RTT
+        open_port_nums = _sondare.tcp_syn_scan_v4(iface, self.ip, ports, pps, grace_ms)
+        self._open_ports = [Port(ip=self.ip, port=p) for p in open_port_nums]
+        self._finalise()
+
+    def _scan_ipv6(self) -> None:
         thread_count = min(self.threads, self._total)
         for _ in range(thread_count):
             t = threading.Thread(target=self._threader)
             t.daemon = True
             t.start()
-
         for curr in range(self.port_begin, self.port_end + 1):
             self.q.put(curr)
-
         self.q.join()
         print()
+        self._finalise()
 
+    def _finalise(self) -> None:
         if self.banners:
             self._open_ports = [
                 Port(ip=p.ip, port=p.port, banner=grab_banner(p.ip, p.port, self._timeout))
                 for p in self._open_ports
             ]
-
         self._results = [
             Port(ip=p.ip, port=p.port, banner=p.banner, service=get_port_service(p.port))
             for p in sorted(self._open_ports, key=lambda p: p.port)

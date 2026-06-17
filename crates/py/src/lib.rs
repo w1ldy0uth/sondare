@@ -2,6 +2,7 @@ use pyo3::prelude::*;
 use pyo3::exceptions::PyRuntimeError;
 use sondare_engine::scanners::arp::arp_sweep_v4 as _arp_sweep_v4;
 use sondare_engine::scanners::icmp::icmp_sweep_v4 as _icmp_sweep_v4;
+use sondare_engine::scanners::tcp::tcp_syn_scan_v4 as _tcp_syn_scan_v4;
 
 /// Sweep a list of IPv4 targets via ICMP echo.
 ///
@@ -40,9 +41,35 @@ fn arp_sweep_v4(
         .map_err(|e| PyRuntimeError::new_err(e.to_string()))
 }
 
+/// SYN scan a list of ports on a single IPv4 target.
+///
+/// Resolves the target MAC via ARP automatically before scanning.
+///
+/// Args:
+///     iface:    network interface name
+///     target_ip: IPv4 address string of the target
+///     ports:    list of port numbers to probe
+///     pps:      max packets per second
+///     grace_ms: ms to keep receive window open after last probe
+///
+/// Returns list of open port numbers.
+#[pyfunction]
+#[pyo3(signature = (iface, target_ip, ports, pps=500, grace_ms=500))]
+fn tcp_syn_scan_v4(
+    iface: &str,
+    target_ip: &str,
+    ports: Vec<u16>,
+    pps: u32,
+    grace_ms: u64,
+) -> PyResult<Vec<u16>> {
+    _tcp_syn_scan_v4(iface, target_ip, ports, pps, grace_ms)
+        .map_err(|e| PyRuntimeError::new_err(e.to_string()))
+}
+
 #[pymodule]
 fn _sondare(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(arp_sweep_v4, m)?)?;
     m.add_function(wrap_pyfunction!(icmp_sweep_v4, m)?)?;
+    m.add_function(wrap_pyfunction!(tcp_syn_scan_v4, m)?)?;
     Ok(())
 }

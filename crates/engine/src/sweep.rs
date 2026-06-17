@@ -5,6 +5,7 @@ use sondare_datalink::Iface;
 use crate::{EngineError, rate::RateLimiter};
 
 /// Parameters for a sweep run.
+#[derive(Clone, Copy)]
 pub struct SweepConfig {
     /// Max packets per second to transmit.
     pub pps: u32,
@@ -80,7 +81,7 @@ where
 
     // TX: send probes on the current thread
     let mut tx = tx;
-    let mut rl = RateLimiter::new(cfg.pps, cfg.pps.min(256));
+    let mut rl = RateLimiter::new(cfg.pps, 1);
     for target in targets {
         if let Some(frame) = build_frame(target) {
             rl.take();

@@ -85,20 +85,18 @@ class TestGetResults:
 
     def test_get_results_after_scan_includes_service_name(self):
         scanner = _make_scanner(port_begin=80, port_end=80)
-        with patch("sondare.services.tcp.sr1", return_value=_tcp_response(SYN_ACK)), \
-             patch("sondare.services.tcp.sr"), \
+        with patch("sondare.services.tcp._sondare.tcp_syn_scan_v4", return_value=[80]), \
              patch("sondare.services.tcp.warm_arp_cache"), \
-             patch("random.randint", return_value=54321):
+             patch("sondare.services.tcp.get_network_interface", return_value="eth0"):
             scanner.scan()
 
         assert scanner.get_results() == [Port("10.0.0.1", 80, service="http")]
 
     def test_results_sorted_by_port(self):
         scanner = _make_scanner(port_begin=22, port_end=80)
-        with patch("sondare.services.tcp.sr1", return_value=_tcp_response(SYN_ACK)), \
-             patch("sondare.services.tcp.sr"), \
+        with patch("sondare.services.tcp._sondare.tcp_syn_scan_v4", return_value=list(range(80, 21, -1))), \
              patch("sondare.services.tcp.warm_arp_cache"), \
-             patch("random.randint", return_value=54321):
+             patch("sondare.services.tcp.get_network_interface", return_value="eth0"):
             scanner.scan()
 
         ports = [p.port for p in scanner.get_results()]
@@ -213,13 +211,18 @@ class TestGrabBanner:
 
 
 class TestBannersIntegration:
+    def _ipv4_scan_patches(self, open_ports):
+        return [
+            patch("sondare.services.tcp._sondare.tcp_syn_scan_v4", return_value=open_ports),
+            patch("sondare.services.tcp.warm_arp_cache"),
+            patch("sondare.services.tcp.get_network_interface", return_value="eth0"),
+        ]
+
     def test_banners_flag_populates_port_banner(self):
         scanner = _make_scanner(banners=True)
-        with patch("sondare.services.tcp.sr1", return_value=_tcp_response(SYN_ACK)), \
-             patch("sondare.services.tcp.sr"), \
-             patch("sondare.services.tcp.grab_banner", return_value="SSH-2.0-OpenSSH_8.9") as mock_grab, \
-             patch("sondare.services.tcp.warm_arp_cache"), \
-             patch("random.randint", return_value=54321):
+        patches = self._ipv4_scan_patches([80])
+        with patches[0], patches[1], patches[2], \
+             patch("sondare.services.tcp.grab_banner", return_value="SSH-2.0-OpenSSH_8.9") as mock_grab:
             scanner.scan()
 
         mock_grab.assert_called_once_with("10.0.0.1", 80, scanner._timeout)
@@ -227,11 +230,9 @@ class TestBannersIntegration:
 
     def test_no_banners_flag_leaves_banner_none(self):
         scanner = _make_scanner(banners=False)
-        with patch("sondare.services.tcp.sr1", return_value=_tcp_response(SYN_ACK)), \
-             patch("sondare.services.tcp.sr"), \
-             patch("sondare.services.tcp.grab_banner") as mock_grab, \
-             patch("sondare.services.tcp.warm_arp_cache"), \
-             patch("random.randint", return_value=54321):
+        patches = self._ipv4_scan_patches([80])
+        with patches[0], patches[1], patches[2], \
+             patch("sondare.services.tcp.grab_banner") as mock_grab:
             scanner.scan()
 
         mock_grab.assert_not_called()
@@ -262,7 +263,8 @@ class TestIpv6Tcp:
     def test_ipv4_scan_calls_arp_cache(self):
         scanner = Tcp(verbose=False, ip="192.168.1.1", port_begin=80, port_end=80,
                       timeout=1, threads=1, retries=0)
-        with patch("sondare.services.tcp.sr1", return_value=None), \
+        with patch("sondare.services.tcp._sondare.tcp_syn_scan_v4", return_value=[]), \
+             patch("sondare.services.tcp.get_network_interface", return_value="eth0"), \
              patch("sondare.services.tcp.warm_arp_cache") as mock_arp:
             scanner.scan()
 

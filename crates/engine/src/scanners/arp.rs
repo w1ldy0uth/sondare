@@ -2,7 +2,7 @@ use std::net::Ipv4Addr;
 use std::time::Duration;
 
 use sondare_codec::{arp, ether, Mac};
-use sondare_datalink::{by_name, Iface};
+use sondare_datalink::{by_name, Iface, RawChannel};
 
 use crate::{sweep, EngineError, SweepConfig};
 
@@ -27,6 +27,32 @@ fn subnet_hosts(cidr: &str) -> Result<Vec<Ipv4Addr>, EngineError> {
     let network = u32::from(base) & mask;
     let broadcast = network | !mask;
     Ok((network + 1..broadcast).map(Ipv4Addr::from).collect())
+}
+
+/// Send a single ARP who-has and return the target's MAC within `timeout`.
+pub fn resolve_mac(iface_name: &str, target_ip: Ipv4Addr, timeout: Duration) -> Result<Mac, EngineError> {
+    let iface = by_name(iface_name).map_err(|e| EngineError::Channel(e.to_string()))?;
+    let src_ip = iface.ipv4.ok_or_else(|| EngineError::Channel(format!("{iface_name} has no IPv4")))?;
+    let src_mac = iface.mac;
+
+    let mut chan = RawChannel::open(&iface).map_err(|e| EngineError::Channel(e.to_string()))?;
+
+    let mut buf = [0u8; ether::LEN + arp::LEN];
+    arp::arp_request(&mut buf, src_mac, src_ip, target_ip)
+        .map_err(|e| EngineError::Codec(e))?;
+    chan.send(&buf).map_err(|e| EngineError::Channel(e.to_string()))?;
+
+    chan.recv_filter(timeout, move |raw| {
+        if raw.len() < ether::LEN + arp::LEN { return None; }
+        let (_, rest) = ether::EtherHdr::decode(raw).ok()?;
+        let (hdr, _) = arp::ArpHdr::decode(rest).ok()?;
+        if hdr.oper == arp::OPER_REPLY && hdr.spa == target_ip && hdr.tpa == src_ip {
+            Some(hdr.sha)
+        } else {
+            None
+        }
+    })
+    .map_err(|_| EngineError::Channel(format!("no ARP reply from {target_ip}")))
 }
 
 /// Active ARP sweep of a subnet. Returns (ip, mac) pairs for responding hosts.
