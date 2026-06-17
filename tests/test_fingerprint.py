@@ -112,48 +112,36 @@ class TestGuessOs:
         assert _guess_os(64, 65535, {"timestamps": True, "wscale": None}) == "macOS / FreeBSD"
 
 
+def _ipv4_patches(rust_result):
+    return [
+        patch("sondare.services.fingerprint._sondare.fingerprint_v4", return_value=rust_result),
+        patch("sondare.services.fingerprint.warm_arp_cache"),
+        patch("sondare.services.fingerprint.get_network_interface", return_value="eth0"),
+    ]
+
+
 class TestOsFingerprinter:
     def test_syn_ack_produces_fingerprint(self):
-        with patch("sondare.services.fingerprint.sr1", return_value=_syn_ack(ttl=64, window=29200)), \
-             patch("sondare.services.fingerprint.sr"), \
-             patch("sondare.services.fingerprint.warm_arp_cache"):
+        # (ttl, window, mss, wscale, has_timestamps, has_sack)
+        patches = _ipv4_patches((64, 29200, None, None, False, False))
+        with patches[0], patches[1], patches[2]:
             scanner = OsFingerprinter(verbose=False, ip="192.168.1.1", port=80, timeout=1)
             scanner.scan()
 
         assert scanner.get_results() == Fingerprint(ip="192.168.1.1", os="Linux", ttl=64, window=29200)
 
     def test_no_response_returns_none(self):
-        with patch("sondare.services.fingerprint.sr1", return_value=None), \
-             patch("sondare.services.fingerprint.warm_arp_cache"):
+        patches = _ipv4_patches(None)
+        with patches[0], patches[1], patches[2]:
             scanner = OsFingerprinter(verbose=False, ip="192.168.1.1", port=80, timeout=1,
                                       icmp_fallback=False)
             scanner.scan()
 
         assert scanner.get_results() is None
 
-    def test_rst_does_not_produce_fingerprint(self):
-        # RST is definitive — no retry, falls straight to ICMP (which also returns None here)
-        with patch("sondare.services.fingerprint.sr1", side_effect=[_rst(), None]), \
-             patch("sondare.services.fingerprint.warm_arp_cache"):
-            scanner = OsFingerprinter(verbose=False, ip="10.0.0.1", port=80, timeout=1)
-            scanner.scan()
-
-        assert scanner.get_results() is None
-
-    def test_rst_does_not_trigger_retry(self):
-        with patch("sondare.services.fingerprint.sr1", side_effect=[_rst(), None]) as mock_sr1, \
-             patch("sondare.services.fingerprint.warm_arp_cache"):
-            scanner = OsFingerprinter(verbose=False, ip="10.0.0.1", port=80, timeout=1)
-            scanner.scan()
-        # exactly 2 calls: RST (no retry) + ICMP probe
-        assert mock_sr1.call_count == 2
-
-    def test_auto_probe_uses_common_ports_in_parallel(self):
-        # Patch to two ports so both are probed; first SYN-ACK wins.
-        with patch("sondare.services.fingerprint._COMMON_PORTS", [80, 443]), \
-             patch("sondare.services.fingerprint.sr1", return_value=_syn_ack(64, 65535)), \
-             patch("sondare.services.fingerprint.sr"), \
-             patch("sondare.services.fingerprint.warm_arp_cache"):
+    def test_auto_probe_returns_fingerprint(self):
+        patches = _ipv4_patches((64, 65535, None, None, False, False))
+        with patches[0], patches[1], patches[2]:
             scanner = OsFingerprinter(verbose=False, ip="10.0.0.1", port=None, timeout=1)
             scanner.scan()
 
@@ -161,38 +149,8 @@ class TestOsFingerprinter:
         assert result is not None
         assert result.os == "macOS / iOS / FreeBSD"
 
-    def test_only_one_result_recorded_when_multiple_syn_acks(self):
-        # Both parallel probes return SYN-ACK; only one result should be stored.
-        with patch("sondare.services.fingerprint._COMMON_PORTS", [80, 443]), \
-             patch("sondare.services.fingerprint.sr1", return_value=_syn_ack(64, 29200)), \
-             patch("sondare.services.fingerprint.sr"), \
-             patch("sondare.services.fingerprint.warm_arp_cache"):
-            scanner = OsFingerprinter(verbose=False, ip="10.0.0.1", port=None, timeout=1)
-            scanner.scan()
-
-        assert scanner.get_results() is not None  # exactly one result, not duplicated
-
-    def test_single_port_makes_one_probe(self):
-        with patch("sondare.services.fingerprint.sr1", return_value=_syn_ack(64, 65535)) as mock_sr1, \
-             patch("sondare.services.fingerprint.sr"), \
-             patch("sondare.services.fingerprint.warm_arp_cache"):
-            scanner = OsFingerprinter(verbose=False, ip="10.0.0.1", port=80, timeout=1)
-            scanner.scan()
-
-        assert mock_sr1.call_count == 1
-
     def test_returns_none_before_scan(self):
         scanner = OsFingerprinter(verbose=False, ip="10.0.0.1", port=80, timeout=1)
-        assert scanner.get_results() is None
-
-    def test_timeout_triggers_retry(self):
-        # First sr1 call times out; second (retry) also times out; ICMP also times out.
-        with patch("sondare.services.fingerprint.sr1", return_value=None) as mock_sr1, \
-             patch("sondare.services.fingerprint.warm_arp_cache"):
-            scanner = OsFingerprinter(verbose=False, ip="10.0.0.1", port=80, timeout=1)
-            scanner.scan()
-        # port probe × 2 (retry) + 1 ICMP = 3 total calls
-        assert mock_sr1.call_count == 3
         assert scanner.get_results() is None
 
     def test_icmp_fallback_when_no_tcp_response(self):
@@ -202,9 +160,9 @@ class TestOsFingerprinter:
         ip_layer.ttl = 63
         icmp_pkt.getlayer.return_value = ip_layer
 
-        # None × 2 (port probe + retry) then icmp_pkt
-        with patch("sondare.services.fingerprint.sr1", side_effect=[None, None, icmp_pkt]), \
-             patch("sondare.services.fingerprint.warm_arp_cache"):
+        patches = _ipv4_patches(None)
+        with patches[0], patches[1], patches[2], \
+             patch("sondare.services.fingerprint.sr1", return_value=icmp_pkt):
             scanner = OsFingerprinter(verbose=False, ip="10.0.0.1", port=80, timeout=1)
             scanner.scan()
 
@@ -216,8 +174,8 @@ class TestOsFingerprinter:
         assert result.source == "icmp"
 
     def test_icmp_fallback_disabled_returns_none(self):
-        with patch("sondare.services.fingerprint.sr1", return_value=None), \
-             patch("sondare.services.fingerprint.warm_arp_cache"):
+        patches = _ipv4_patches(None)
+        with patches[0], patches[1], patches[2]:
             scanner = OsFingerprinter(verbose=False, ip="10.0.0.1", port=80, timeout=1,
                                       icmp_fallback=False)
             scanner.scan()
@@ -225,40 +183,26 @@ class TestOsFingerprinter:
         assert scanner.get_results() is None
 
     def test_icmp_fallback_skipped_when_tcp_succeeds(self):
-        with patch("sondare.services.fingerprint.sr1", return_value=_syn_ack(64, 65535)) as mock_sr1, \
-             patch("sondare.services.fingerprint.sr"), \
-             patch("sondare.services.fingerprint.warm_arp_cache"):
+        patches = _ipv4_patches((64, 65535, None, None, False, False))
+        with patches[0], patches[1], patches[2]:
             scanner = OsFingerprinter(verbose=False, ip="10.0.0.1", port=80, timeout=1)
             scanner.scan()
 
         result = scanner.get_results()
         assert result is not None
-        assert result.window == 65535  # TCP-derived, not ICMP fallback
-
-    def test_sends_rst_after_syn_ack(self):
-        with patch("sondare.services.fingerprint.sr1", return_value=_syn_ack(64, 29200)), \
-             patch("sondare.services.fingerprint.sr") as mock_sr, \
-             patch("sondare.services.fingerprint.warm_arp_cache"):
-            scanner = OsFingerprinter(verbose=False, ip="10.0.0.1", port=80, timeout=1)
-            scanner.scan()
-
-        mock_sr.assert_called_once()
+        assert result.window == 65535
 
     def test_tcp_result_has_tcp_source(self):
-        with patch("sondare.services.fingerprint.sr1", return_value=_syn_ack(64, 29200)), \
-             patch("sondare.services.fingerprint.sr"), \
-             patch("sondare.services.fingerprint.warm_arp_cache"):
+        patches = _ipv4_patches((64, 29200, None, None, False, False))
+        with patches[0], patches[1], patches[2]:
             scanner = OsFingerprinter(verbose=False, ip="10.0.0.1", port=80, timeout=1)
             scanner.scan()
 
         assert scanner.get_results().source == "tcp"
 
     def test_tcp_options_refine_macos_ios(self):
-        # window=65535 alone → "macOS / iOS / FreeBSD"; with timestamps+WScale=6 → "macOS / iOS"
-        macos_opts = [("Timestamp", (1, 0)), ("WScale", 6), ("MSS", 1460), ("SAckOK", b"")]
-        with patch("sondare.services.fingerprint.sr1", return_value=_syn_ack(64, 65535, macos_opts)), \
-             patch("sondare.services.fingerprint.sr"), \
-             patch("sondare.services.fingerprint.warm_arp_cache"):
+        patches = _ipv4_patches((64, 65535, 1460, 6, True, True))
+        with patches[0], patches[1], patches[2]:
             scanner = OsFingerprinter(verbose=False, ip="10.0.0.1", port=80, timeout=1)
             scanner.scan()
 
@@ -268,10 +212,8 @@ class TestOsFingerprinter:
         assert result.source == "tcp"
 
     def test_tcp_options_windows10_window(self):
-        # Windows 10/11 characteristic window size; no timestamps (Windows default)
-        with patch("sondare.services.fingerprint.sr1", return_value=_syn_ack(128, 64240, [])), \
-             patch("sondare.services.fingerprint.sr"), \
-             patch("sondare.services.fingerprint.warm_arp_cache"):
+        patches = _ipv4_patches((128, 64240, None, None, False, False))
+        with patches[0], patches[1], patches[2]:
             scanner = OsFingerprinter(verbose=False, ip="10.0.0.1", port=80, timeout=1)
             scanner.scan()
 

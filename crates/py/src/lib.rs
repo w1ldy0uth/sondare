@@ -4,6 +4,7 @@ use sondare_engine::scanners::arp::arp_sweep_v4 as _arp_sweep_v4;
 use sondare_engine::scanners::icmp::icmp_sweep_v4 as _icmp_sweep_v4;
 use sondare_engine::scanners::tcp::tcp_syn_scan_v4 as _tcp_syn_scan_v4;
 use sondare_engine::scanners::udp::udp_scan_v4 as _udp_scan_v4;
+use sondare_engine::scanners::fingerprint::fingerprint_v4 as _fingerprint_v4;
 
 /// Sweep a list of IPv4 targets via ICMP echo.
 ///
@@ -86,11 +87,30 @@ fn udp_scan_v4(
         .map_err(|e| PyRuntimeError::new_err(e.to_string()))
 }
 
+/// Probe ports via TCP SYN to fingerprint a target's OS from the SYN-ACK response.
+///
+/// Returns (ttl, window, mss_or_none, wscale_or_none, has_timestamps, has_sack)
+/// or None if no port responded with SYN-ACK.
+#[pyfunction]
+#[pyo3(signature = (iface, target_ip, ports, pps=500, grace_ms=500))]
+fn fingerprint_v4(
+    iface: &str,
+    target_ip: &str,
+    ports: Vec<u16>,
+    pps: u32,
+    grace_ms: u64,
+) -> PyResult<Option<(u8, u16, Option<u16>, Option<u8>, bool, bool)>> {
+    _fingerprint_v4(iface, target_ip, ports, pps, grace_ms)
+        .map(|r| r.map(|f| (f.ttl, f.window, f.mss, f.wscale, f.has_timestamps, f.has_sack)))
+        .map_err(|e| PyRuntimeError::new_err(e.to_string()))
+}
+
 #[pymodule]
 fn _sondare(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(arp_sweep_v4, m)?)?;
     m.add_function(wrap_pyfunction!(icmp_sweep_v4, m)?)?;
     m.add_function(wrap_pyfunction!(tcp_syn_scan_v4, m)?)?;
     m.add_function(wrap_pyfunction!(udp_scan_v4, m)?)?;
+    m.add_function(wrap_pyfunction!(fingerprint_v4, m)?)?;
     Ok(())
 }

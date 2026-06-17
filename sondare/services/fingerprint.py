@@ -5,8 +5,11 @@ import random
 import threading
 import time
 from scapy.all import IP, IPv6, TCP, ICMP, ICMPv6EchoRequest, ICMPv6EchoReply, sr1, sr
+from sondare import _sondare
 from sondare.models import Fingerprint
-from sondare.utils.network import warm_arp_cache, is_ipv6_address
+from sondare.utils.network import (
+    warm_arp_cache, is_ipv6_address, get_network_interface,
+)
 from sondare.utils.adaptive_pool import AdaptivePool
 
 # Ports tried in parallel when no specific port is given.
@@ -168,8 +171,40 @@ class OsFingerprinter:
     def scan(self) -> None:
         """Probes all ports in parallel; fingerprints on the first SYN-ACK.
         Falls back to ICMP TTL when no TCP port responds (unless icmp_fallback=False)."""
-        if not self._ipv6:
-            warm_arp_cache(self.ip)
+        if self._ipv6:
+            self._scan_ipv6()
+        else:
+            self._scan_ipv4()
+
+    def _scan_ipv4(self) -> None:
+        warm_arp_cache(self.ip)
+        iface = get_network_interface()
+        ports = [self.port] if self.port is not None else _COMMON_PORTS
+        pps = 500
+        grace_ms = 500
+        try:
+            result = _sondare.fingerprint_v4(iface, self.ip, ports, pps, grace_ms)
+        except RuntimeError:
+            result = None
+        if result is not None:
+            ttl, window, mss, wscale, has_timestamps, has_sack = result
+            tcp_opts = {
+                "mss": mss,
+                "wscale": wscale,
+                "timestamps": has_timestamps,
+                "sack": has_sack,
+            }
+            self._result = Fingerprint(
+                ip=self.ip,
+                os=_guess_os(ttl, window, tcp_opts),
+                ttl=ttl,
+                window=window,
+                source="tcp",
+            )
+        elif self._icmp_fallback:
+            self._icmp_probe()
+
+    def _scan_ipv6(self) -> None:
         ports = [self.port] if self.port is not None else _COMMON_PORTS
         threads = [
             threading.Thread(target=self._probe, args=(port,), daemon=True)
