@@ -5,8 +5,11 @@ import threading
 import time
 from queue import Queue
 from scapy.all import IP, IPv6, UDP, ICMP, ICMPv6DestUnreach, sr1
+from sondare import _sondare
 from sondare.models import Port
-from sondare.utils.network import warm_arp_cache, get_port_service, is_ipv6_address
+from sondare.utils.network import (
+    warm_arp_cache, get_port_service, is_ipv6_address, get_network_interface,
+)
 from sondare.utils.adaptive_pool import AdaptivePool
 
 
@@ -82,9 +85,26 @@ class Udp:
             self.q.task_done()
 
     def scan(self) -> None:
-        """Runs the threaded UDP scan."""
-        if not self._ipv6:
-            warm_arp_cache(self.ip)
+        """Runs the UDP scan."""
+        if self._ipv6:
+            self._scan_ipv6()
+        else:
+            self._scan_ipv4()
+
+    def _scan_ipv4(self) -> None:
+        warm_arp_cache(self.ip)
+        iface = get_network_interface()
+        ports = list(range(self.port_begin, self.port_end + 1))
+        pps = 500
+        grace_ms = 500
+        open_port_nums = _sondare.udp_scan_v4(iface, self.ip, ports, pps, grace_ms)
+        self._open_ports = [Port(ip=self.ip, port=p) for p in open_port_nums]
+        self._results = [
+            Port(ip=p.ip, port=p.port, service=get_port_service(p.port, "udp"))
+            for p in sorted(self._open_ports, key=lambda p: p.port)
+        ]
+
+    def _scan_ipv6(self) -> None:
         thread_count = min(self.threads, self._total)
         for _ in range(thread_count):
             t = threading.Thread(target=self._threader)

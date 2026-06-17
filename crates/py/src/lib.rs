@@ -3,6 +3,7 @@ use pyo3::exceptions::PyRuntimeError;
 use sondare_engine::scanners::arp::arp_sweep_v4 as _arp_sweep_v4;
 use sondare_engine::scanners::icmp::icmp_sweep_v4 as _icmp_sweep_v4;
 use sondare_engine::scanners::tcp::tcp_syn_scan_v4 as _tcp_syn_scan_v4;
+use sondare_engine::scanners::udp::udp_scan_v4 as _udp_scan_v4;
 
 /// Sweep a list of IPv4 targets via ICMP echo.
 ///
@@ -66,10 +67,30 @@ fn tcp_syn_scan_v4(
         .map_err(|e| PyRuntimeError::new_err(e.to_string()))
 }
 
+/// UDP scan a list of ports on a single IPv4 target.
+///
+/// Sends empty UDP datagrams and listens for ICMP port-unreachable.
+/// Ports with no ICMP unreachable after two passes are reported as open|filtered.
+///
+/// Returns list of open|filtered port numbers.
+#[pyfunction]
+#[pyo3(signature = (iface, target_ip, ports, pps=500, grace_ms=500))]
+fn udp_scan_v4(
+    iface: &str,
+    target_ip: &str,
+    ports: Vec<u16>,
+    pps: u32,
+    grace_ms: u64,
+) -> PyResult<Vec<u16>> {
+    _udp_scan_v4(iface, target_ip, ports, pps, grace_ms)
+        .map_err(|e| PyRuntimeError::new_err(e.to_string()))
+}
+
 #[pymodule]
 fn _sondare(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(arp_sweep_v4, m)?)?;
     m.add_function(wrap_pyfunction!(icmp_sweep_v4, m)?)?;
     m.add_function(wrap_pyfunction!(tcp_syn_scan_v4, m)?)?;
+    m.add_function(wrap_pyfunction!(udp_scan_v4, m)?)?;
     Ok(())
 }

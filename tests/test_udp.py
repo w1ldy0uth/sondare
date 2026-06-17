@@ -99,16 +99,18 @@ class TestGetResults:
 
     def test_get_results_after_scan_includes_service_name(self):
         scanner = _make_scanner(port_begin=53, port_end=53)
-        with patch("sondare.services.udp.sr1", return_value=None), \
-             patch("sondare.services.udp.warm_arp_cache"):
+        with patch("sondare.services.udp._sondare.udp_scan_v4", return_value=[53]), \
+             patch("sondare.services.udp.warm_arp_cache"), \
+             patch("sondare.services.udp.get_network_interface", return_value="eth0"):
             scanner.scan()
 
         assert scanner.get_results() == [Port("10.0.0.1", 53, service="domain")]
 
     def test_results_sorted_by_port(self):
         scanner = _make_scanner(port_begin=53, port_end=69)
-        with patch("sondare.services.udp.sr1", return_value=None), \
-             patch("sondare.services.udp.warm_arp_cache"):
+        with patch("sondare.services.udp._sondare.udp_scan_v4", return_value=list(range(69, 52, -1))), \
+             patch("sondare.services.udp.warm_arp_cache"), \
+             patch("sondare.services.udp.get_network_interface", return_value="eth0"):
             scanner.scan()
 
         ports = [p.port for p in scanner.get_results()]
@@ -151,3 +153,13 @@ class TestIpv6Udp:
             scanner.scan()
 
         mock_arp.assert_not_called()
+
+    def test_ipv4_scan_calls_arp_cache(self):
+        scanner = Udp(verbose=False, ip="192.168.1.1", port_begin=53, port_end=53,
+                      timeout=1, threads=1, retries=0)
+        with patch("sondare.services.udp._sondare.udp_scan_v4", return_value=[]), \
+             patch("sondare.services.udp.get_network_interface", return_value="eth0"), \
+             patch("sondare.services.udp.warm_arp_cache") as mock_arp:
+            scanner.scan()
+
+        mock_arp.assert_called_once_with("192.168.1.1")
