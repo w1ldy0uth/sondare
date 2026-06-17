@@ -21,15 +21,30 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      - name: Install Npcap SDK (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ProgressPreference = 'SilentlyContinue'
+          Invoke-WebRequest https://npcap.com/dist/npcap-sdk-1.13.zip -OutFile npcap-sdk.zip
+          Expand-Archive npcap-sdk.zip -DestinationPath C:\npcap-sdk
+          "LIB=C:\npcap-sdk\Lib\x64;$Env:LIB" | Out-File -FilePath $Env:GITHUB_ENV -Append
+
       - name: Install maturin
         run: pip install maturin
       - name: Build wheel
         run: maturin build --release --out dist --manifest-path crates/py/Cargo.toml
       - name: Install and smoke-test
+        if: runner.os != 'Windows'
         shell: bash
         run: |
           pip install dist/*.whl
           cd "$RUNNER_TEMP" && python -c "import sondare._sondare; print('sondare._sondare ok')"
+      - name: Install wheel (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: pip install dist/*.whl
       - uses: actions/upload-artifact@v4
         with:
           name: wheels-${{ matrix.os }}
