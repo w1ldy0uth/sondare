@@ -1,10 +1,11 @@
-use std::net::Ipv4Addr;
+use std::net::{Ipv4Addr, Ipv6Addr};
 use std::time::Duration;
-use sondare_codec::{ether, ipv4, tcp as tcp_codec, tcp::TcpOption, Mac};
+use sondare_codec::{ether, ipv4, ipv6, tcp as tcp_codec, tcp::TcpOption, Mac};
 use sondare_datalink::{by_name, Iface};
 
 use crate::{sweep, EngineError, SweepConfig};
 use crate::scanners::arp::resolve_mac;
+use crate::scanners::ndp::resolve_mac_v6;
 
 const PROBE_SPORT: u16 = 0xDEAD;
 
@@ -98,6 +99,91 @@ pub fn fingerprint_v4(
         ports.into_iter(),
         move |port| Some(build_syn(src_mac, dst_mac, src_ip, dst_ip, port)),
         move |raw| parse_synack(raw, src_ip, dst_ip),
+        cfg,
+    )?;
+
+    Ok(results.into_iter().next())
+}
+
+fn build_syn_v6(src_mac: Mac, dst_mac: Mac, src_ip: Ipv6Addr, dst_ip: Ipv6Addr, port: u16) -> Vec<u8> {
+    let tcp_len = 20usize;
+    let mut buf = vec![0u8; ether::LEN + ipv6::LEN + tcp_len];
+
+    let eth = ether::EtherHdr { dst: dst_mac, src: src_mac, ethertype: ether::ETYPE_IPV6 };
+    let mut off = eth.encode(&mut buf).unwrap();
+
+    let ip = ipv6::Ipv6Hdr::new(ipv6::NEXT_HDR_TCP, src_ip, dst_ip, tcp_len as u16);
+    off += ip.encode(&mut buf[off..]).unwrap();
+
+    let mut hdr = tcp_codec::TcpHdr::syn(PROBE_SPORT, port, 0xF1_0000u32.wrapping_add(port as u32));
+    hdr.window = 65535;
+    hdr.encode_v6(&mut buf[off..], &[], src_ip, dst_ip).unwrap();
+
+    buf
+}
+
+fn parse_synack_v6(raw: &[u8], src_ip: Ipv6Addr, dst_ip: Ipv6Addr) -> Option<FingerprintResult> {
+    if raw.len() < ether::LEN + ipv6::LEN + 20 { return None; }
+    let (eth, rest) = ether::EtherHdr::decode(raw).ok()?;
+    if eth.ethertype != ether::ETYPE_IPV6 { return None; }
+    let (ip, rest) = ipv6::Ipv6Hdr::decode(rest).ok()?;
+    if ip.next_header != ipv6::NEXT_HDR_TCP || ip.src != dst_ip || ip.dst != src_ip { return None; }
+    let (hdr, _) = tcp_codec::TcpHdr::decode(rest).ok()?;
+    if hdr.dport != PROBE_SPORT { return None; }
+
+    let sa = tcp_codec::FLAG_SYN | tcp_codec::FLAG_ACK;
+    if hdr.flags & sa != sa { return None; }
+
+    let mut mss = None;
+    let mut wscale = None;
+    let mut has_timestamps = false;
+    let mut has_sack = false;
+    for opt in &hdr.options {
+        match opt {
+            TcpOption::Mss(v) => mss = Some(*v),
+            TcpOption::WScale(v) => wscale = Some(*v),
+            TcpOption::Timestamp { .. } => has_timestamps = true,
+            TcpOption::SackPermitted => has_sack = true,
+            TcpOption::Nop => {}
+        }
+    }
+
+    Some(FingerprintResult {
+        ttl: ip.hop_limit,
+        window: hdr.window,
+        mss,
+        wscale,
+        has_timestamps,
+        has_sack,
+    })
+}
+
+/// Probe ports via TCP SYN on an IPv6 target. Returns first SYN-ACK's signals.
+pub fn fingerprint_v6(
+    iface_name: &str,
+    target_ip: &str,
+    ports: Vec<u16>,
+    pps: u32,
+    grace_ms: u64,
+) -> Result<Option<FingerprintResult>, EngineError> {
+    let iface: Iface = by_name(iface_name)
+        .map_err(|e| EngineError::Channel(e.to_string()))?;
+    let src_ip = iface
+        .ipv6_ll
+        .ok_or_else(|| EngineError::Channel(format!("{iface_name} has no IPv6 link-local address")))?;
+    let src_mac = iface.mac;
+    let dst_ip: Ipv6Addr = target_ip
+        .parse()
+        .map_err(|_| EngineError::Channel(format!("invalid target IPv6: {target_ip}")))?;
+    let dst_mac = resolve_mac_v6(iface_name, dst_ip, Duration::from_secs(2))?;
+
+    let cfg = SweepConfig { pps, recv_grace: Duration::from_millis(grace_ms) };
+
+    let results = sweep(
+        &iface,
+        ports.into_iter(),
+        move |port| Some(build_syn_v6(src_mac, dst_mac, src_ip, dst_ip, port)),
+        move |raw| parse_synack_v6(raw, src_ip, dst_ip),
         cfg,
     )?;
 

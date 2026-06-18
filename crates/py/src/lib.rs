@@ -7,8 +7,14 @@ use sondare_engine::scanners::udp::udp_scan_v4 as _udp_scan_v4;
 use sondare_engine::scanners::fingerprint::fingerprint_v4 as _fingerprint_v4;
 use sondare_engine::scanners::ndp::ndp_sweep as _ndp_sweep;
 use sondare_engine::scanners::trace::traceroute_v4 as _traceroute_v4;
+use sondare_engine::scanners::trace::traceroute_v6 as _traceroute_v6;
 use sondare_engine::scanners::tls::tls_probe as _tls_probe;
 use sondare_engine::scanners::mdns::mdns_scan as _mdns_scan;
+use sondare_engine::scanners::icmp::icmp_sweep_v6 as _icmp_sweep_v6;
+use sondare_engine::scanners::icmp::icmp_multicast_v6 as _icmp_multicast_v6;
+use sondare_engine::scanners::tcp::tcp_syn_scan_v6 as _tcp_syn_scan_v6;
+use sondare_engine::scanners::udp::udp_scan_v6 as _udp_scan_v6;
+use sondare_engine::scanners::fingerprint::fingerprint_v6 as _fingerprint_v6;
 
 /// Sweep a list of IPv4 targets via ICMP echo.
 ///
@@ -139,6 +145,60 @@ fn traceroute_v4(
         .map_err(|e| PyRuntimeError::new_err(e.to_string()))
 }
 
+/// Sweep a list of IPv6 targets via ICMPv6 echo.
+#[pyfunction]
+#[pyo3(signature = (iface, targets, pps=500, grace_ms=500))]
+fn icmp_sweep_v6(iface: &str, targets: Vec<String>, pps: u32, grace_ms: u64) -> PyResult<Vec<String>> {
+    _icmp_sweep_v6(iface, targets, pps, grace_ms)
+        .map_err(|e| PyRuntimeError::new_err(e.to_string()))
+}
+
+/// ICMPv6 multicast sweep of ff02::1 (all-nodes).
+#[pyfunction]
+#[pyo3(signature = (iface, pps=500, grace_ms=2000))]
+fn icmp_multicast_v6(iface: &str, pps: u32, grace_ms: u64) -> PyResult<Vec<String>> {
+    _icmp_multicast_v6(iface, pps, grace_ms)
+        .map_err(|e| PyRuntimeError::new_err(e.to_string()))
+}
+
+/// SYN scan ports on a single IPv6 target.
+#[pyfunction]
+#[pyo3(signature = (iface, target_ip, ports, pps=500, grace_ms=500))]
+fn tcp_syn_scan_v6(iface: &str, target_ip: &str, ports: Vec<u16>, pps: u32, grace_ms: u64) -> PyResult<Vec<u16>> {
+    _tcp_syn_scan_v6(iface, target_ip, ports, pps, grace_ms)
+        .map_err(|e| PyRuntimeError::new_err(e.to_string()))
+}
+
+/// UDP scan ports on a single IPv6 target.
+#[pyfunction]
+#[pyo3(signature = (iface, target_ip, ports, pps=500, grace_ms=500))]
+fn udp_scan_v6(iface: &str, target_ip: &str, ports: Vec<u16>, pps: u32, grace_ms: u64) -> PyResult<Vec<u16>> {
+    _udp_scan_v6(iface, target_ip, ports, pps, grace_ms)
+        .map_err(|e| PyRuntimeError::new_err(e.to_string()))
+}
+
+/// OS fingerprint an IPv6 target via TCP SYN probe.
+#[pyfunction]
+#[pyo3(signature = (iface, target_ip, ports, pps=500, grace_ms=500))]
+fn fingerprint_v6(iface: &str, target_ip: &str, ports: Vec<u16>, pps: u32, grace_ms: u64)
+    -> PyResult<Option<(u8, u16, Option<u16>, Option<u8>, bool, bool)>>
+{
+    _fingerprint_v6(iface, target_ip, ports, pps, grace_ms)
+        .map(|r| r.map(|f| (f.ttl, f.window, f.mss, f.wscale, f.has_timestamps, f.has_sack)))
+        .map_err(|e| PyRuntimeError::new_err(e.to_string()))
+}
+
+/// ICMPv6 traceroute to an IPv6 target.
+#[pyfunction]
+#[pyo3(signature = (iface, target_ip, max_hops=30, timeout_ms=3000))]
+fn traceroute_v6(iface: &str, target_ip: &str, max_hops: u8, timeout_ms: u64)
+    -> PyResult<Vec<(u8, Option<String>, Option<f64>)>>
+{
+    _traceroute_v6(iface, target_ip, max_hops, timeout_ms)
+        .map(|hops| hops.into_iter().map(|h| (h.ttl, h.ip, h.rtt_ms)).collect())
+        .map_err(|e| PyRuntimeError::new_err(e.to_string()))
+}
+
 /// Probe TLS certificates on the given ports.
 ///
 /// Returns a list of dicts with keys: ip, port, cn, issuer, not_before,
@@ -185,5 +245,11 @@ fn _sondare(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(traceroute_v4, m)?)?;
     m.add_function(wrap_pyfunction!(tls_probe, m)?)?;
     m.add_function(wrap_pyfunction!(mdns_scan, m)?)?;
+    m.add_function(wrap_pyfunction!(icmp_sweep_v6, m)?)?;
+    m.add_function(wrap_pyfunction!(icmp_multicast_v6, m)?)?;
+    m.add_function(wrap_pyfunction!(tcp_syn_scan_v6, m)?)?;
+    m.add_function(wrap_pyfunction!(udp_scan_v6, m)?)?;
+    m.add_function(wrap_pyfunction!(fingerprint_v6, m)?)?;
+    m.add_function(wrap_pyfunction!(traceroute_v6, m)?)?;
     Ok(())
 }

@@ -11,7 +11,6 @@ import threading
 from datetime import datetime
 from importlib.resources import files as _res_files
 
-from scapy.all import conf
 from sondare import _sondare
 from sondare.services.fingerprint import OsFingerprinter
 from sondare.utils.network import (
@@ -134,11 +133,7 @@ def _get_gateway() -> str | None:
                         return gw
     except Exception:
         pass
-    try:
-        gw = conf.route.route("0.0.0.0")[2]
-        return gw if gw not in _SKIP else None
-    except Exception:
-        return None
+    return None
 
 
 def _get_local_mac(iface: str) -> str | None:

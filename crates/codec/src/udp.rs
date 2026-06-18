@@ -1,5 +1,5 @@
-use std::net::Ipv4Addr;
-use crate::{CodecError, checksum, ipv4};
+use std::net::{Ipv4Addr, Ipv6Addr};
+use crate::{CodecError, checksum, ipv4, ipv6};
 
 pub const LEN: usize = 8;
 
@@ -23,6 +23,25 @@ impl UdpHdr {
         buf[6..8].copy_from_slice(&0u16.to_be_bytes()); // checksum placeholder
         buf[8..8 + payload.len()].copy_from_slice(payload);
         let pseudo = ipv4::Ipv4Hdr::new(ipv4::PROTO_UDP, src, dst, 0).pseudo_checksum(length);
+        let mut sum = pseudo;
+        checksum::add_slice(&mut sum, &buf[..total]);
+        let csum = checksum::fold(sum);
+        buf[6..8].copy_from_slice(&csum.to_be_bytes());
+        Ok(total)
+    }
+
+    pub fn encode_v6(&self, buf: &mut [u8], payload: &[u8], src: Ipv6Addr, dst: Ipv6Addr) -> Result<usize, CodecError> {
+        let total = LEN + payload.len();
+        if buf.len() < total {
+            return Err(CodecError::BufTooSmall);
+        }
+        buf[0..2].copy_from_slice(&self.sport.to_be_bytes());
+        buf[2..4].copy_from_slice(&self.dport.to_be_bytes());
+        buf[4..6].copy_from_slice(&self.length.to_be_bytes());
+        buf[6..8].copy_from_slice(&0u16.to_be_bytes());
+        buf[8..8 + payload.len()].copy_from_slice(payload);
+        let pseudo = ipv6::Ipv6Hdr::new(ipv6::NEXT_HDR_UDP, src, dst, 0)
+            .pseudo_checksum(ipv6::NEXT_HDR_UDP, total as u32);
         let mut sum = pseudo;
         checksum::add_slice(&mut sum, &buf[..total]);
         let csum = checksum::fold(sum);

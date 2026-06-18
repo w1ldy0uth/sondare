@@ -1,5 +1,5 @@
-use std::net::Ipv4Addr;
-use crate::{CodecError, checksum, ipv4};
+use std::net::{Ipv4Addr, Ipv6Addr};
+use crate::{CodecError, checksum, ipv4, ipv6};
 
 pub const FLAG_FIN: u16 = 0x001;
 pub const FLAG_SYN: u16 = 0x002;
@@ -100,6 +100,36 @@ impl TcpHdr {
         }
         let pseudo = ipv4::Ipv4Hdr::new(ipv4::PROTO_TCP, src, dst, 0)
             .pseudo_checksum(total as u16);
+        let mut sum = pseudo;
+        checksum::add_slice(&mut sum, &buf[..total]);
+        let csum = checksum::fold(sum);
+        buf[16..18].copy_from_slice(&csum.to_be_bytes());
+        Ok(total)
+    }
+
+    pub fn encode_v6(&self, buf: &mut [u8], payload: &[u8], src: Ipv6Addr, dst: Ipv6Addr) -> Result<usize, CodecError> {
+        let opts = self.options_bytes();
+        let data_offset = (20 + opts.len()) / 4;
+        let hdr_len = data_offset * 4;
+        let total = hdr_len + payload.len();
+        if buf.len() < total {
+            return Err(CodecError::BufTooSmall);
+        }
+        buf[0..2].copy_from_slice(&self.sport.to_be_bytes());
+        buf[2..4].copy_from_slice(&self.dport.to_be_bytes());
+        buf[4..8].copy_from_slice(&self.seq.to_be_bytes());
+        buf[8..12].copy_from_slice(&self.ack.to_be_bytes());
+        buf[12] = (data_offset as u8) << 4;
+        buf[13] = (self.flags & 0xff) as u8;
+        buf[14..16].copy_from_slice(&self.window.to_be_bytes());
+        buf[16..18].copy_from_slice(&0u16.to_be_bytes());
+        buf[18..20].copy_from_slice(&self.urgent.to_be_bytes());
+        buf[20..20 + opts.len()].copy_from_slice(&opts);
+        if !payload.is_empty() {
+            buf[hdr_len..hdr_len + payload.len()].copy_from_slice(payload);
+        }
+        let pseudo = ipv6::Ipv6Hdr::new(ipv6::NEXT_HDR_TCP, src, dst, 0)
+            .pseudo_checksum(ipv6::NEXT_HDR_TCP, total as u32);
         let mut sum = pseudo;
         checksum::add_slice(&mut sum, &buf[..total]);
         let csum = checksum::fold(sum);

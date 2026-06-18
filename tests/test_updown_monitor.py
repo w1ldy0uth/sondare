@@ -190,39 +190,25 @@ class TestUpDownMonitor:
 
 
 class TestIpv6HostsWatcher:
-    def _make_v6_reply(self, has_reply: bool = True):
-        pkt = MagicMock()
-        pkt.haslayer.side_effect = lambda cls: has_reply and cls.__name__ == "ICMPv6EchoReply"
-        return pkt
+    def test_ipv6_round_uses_rust_icmp_sweep_v6(self):
+        m = _monitor(hosts=["fe80::1", "fe80::2"])
+        with patch("sondare.monitors.hosts_watcher._sondare.icmp_sweep_v6", return_value=["fe80::1"]) as mock_v6, \
+             patch("sondare.monitors.hosts_watcher.get_network_interface", return_value="en0"):
+            result = m._round()
+        mock_v6.assert_called_once()
+        assert result["fe80::1"] is True
+        assert result["fe80::2"] is False
 
-    def test_ping_ipv6_sends_icmpv6_echo_request(self):
-        m = _monitor()
-        sent_pkts = []
-
-        def fake_sr1(pkt, **_kw):
-            sent_pkts.append(pkt)
-            return None
-
-        with patch("sondare.monitors.hosts_watcher.sr1", side_effect=fake_sr1):
-            m._ping_ipv6("fe80::1")
-
-        from scapy.all import IPv6, ICMPv6EchoRequest
-        assert any(pkt.haslayer(IPv6) and pkt.haslayer(ICMPv6EchoRequest) for pkt in sent_pkts)
-
-    def test_ping_ipv6_returns_true_on_echo_reply(self):
-        m = _monitor()
-        with patch("sondare.monitors.hosts_watcher.sr1", return_value=self._make_v6_reply(True)):
-            assert m._ping_ipv6("fe80::1") is True
-
-    def test_ping_ipv6_returns_false_on_no_response(self):
-        m = _monitor()
-        with patch("sondare.monitors.hosts_watcher.sr1", return_value=None):
-            assert m._ping_ipv6("fe80::1") is False
-
-    def test_ping_ipv6_returns_false_on_wrong_reply(self):
-        m = _monitor()
-        with patch("sondare.monitors.hosts_watcher.sr1", return_value=self._make_v6_reply(False)):
-            assert m._ping_ipv6("fe80::1") is False
+    def test_mixed_hosts_use_both_backends(self):
+        m = _monitor(hosts=["192.168.1.1", "fe80::1"])
+        with patch("sondare.monitors.hosts_watcher._sondare.icmp_sweep_v4", return_value=["192.168.1.1"]) as mock_v4, \
+             patch("sondare.monitors.hosts_watcher._sondare.icmp_sweep_v6", return_value=[]) as mock_v6, \
+             patch("sondare.monitors.hosts_watcher.get_network_interface", return_value="en0"):
+            result = m._round()
+        mock_v4.assert_called_once()
+        mock_v6.assert_called_once()
+        assert result["192.168.1.1"] is True
+        assert result["fe80::1"] is False
 
     def test_draw_widens_column_for_ipv6_address(self, capsys):
         m = _monitor(hosts=[])

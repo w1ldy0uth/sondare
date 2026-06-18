@@ -1,58 +1,17 @@
 #!/usr/bin/env python3
 # -*- coding: UTF-8 -*-
 
-import random
-import threading
 import time
 from datetime import datetime
-from queue import Queue
-from scapy.all import IPv6, TCP, sr1, sr
 from sondare import _sondare
 from sondare.utils.network import get_network_interface, warm_arp_cache, is_ipv6_address
-
-
-def _syn_scan_ipv6(ip: str, port_begin: int, port_end: int, timeout: float, threads: int, verbose: bool) -> set[int]:
-    """SYN scan for IPv6 targets via Scapy."""
-    open_ports: set[int] = set()
-    lock = threading.Lock()
-    q: Queue[int] = Queue()
-
-    def check(port: int) -> None:
-        sport = random.randint(1025, 65534)
-        rsp = sr1(
-            IPv6(dst=ip) / TCP(sport=sport, dport=port, flags="S"),
-            timeout=timeout,
-            verbose=verbose,
-            promisc=False,
-        )
-        if rsp and rsp.haslayer(TCP) and rsp.getlayer(TCP).flags == 0x12:
-            sr(IPv6(dst=ip) / TCP(sport=sport, dport=port, flags="R"), timeout=1, verbose=False, promisc=False)
-            with lock:
-                open_ports.add(port)
-
-    def worker() -> None:
-        while True:
-            port = q.get()
-            check(port)
-            q.task_done()
-
-    total = port_end - port_begin + 1
-    for _ in range(min(threads, total)):
-        t = threading.Thread(target=worker, daemon=True)
-        t.start()
-
-    for p in range(port_begin, port_end + 1):
-        q.put(p)
-    q.join()
-
-    return open_ports
 
 
 class PortWatcher:
     """
     Repeatedly SYN-scans a target's port range and reports state changes:
-      OPENED — port was closed/filtered, now open
-      CLOSED — port was open, now closed/filtered
+      OPENED - port was closed/filtered, now open
+      CLOSED - port was open, now closed/filtered
     """
 
     def __init__(
@@ -75,18 +34,11 @@ class PortWatcher:
         self._open: set[int] = set()
 
     def _scan(self) -> set[int]:
-        if is_ipv6_address(self._ip):
-            return _syn_scan_ipv6(
-                ip=self._ip,
-                port_begin=self._port_begin,
-                port_end=self._port_end,
-                timeout=self._timeout,
-                threads=self._threads,
-                verbose=self._verbose,
-            )
         iface = get_network_interface()
         ports = list(range(self._port_begin, self._port_end + 1))
         grace_ms = max(200, int(self._timeout * 1000 // 2))
+        if is_ipv6_address(self._ip):
+            return set(_sondare.tcp_syn_scan_v6(iface, self._ip, ports, 500, grace_ms))
         return set(_sondare.tcp_syn_scan_v4(iface, self._ip, ports, 500, grace_ms))
 
     def watch(self) -> None:
@@ -97,7 +49,7 @@ class PortWatcher:
         )
         print(
             f"Monitoring ports {port_range} on {self._ip}"
-            f" every {self._interval}s — Ctrl+C to stop\n"
+            f" every {self._interval}s - Ctrl+C to stop\n"
         )
         if not is_ipv6_address(self._ip):
             warm_arp_cache(self._ip)

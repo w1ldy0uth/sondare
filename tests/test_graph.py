@@ -48,30 +48,15 @@ class TestGetGateway:
             assert _get_gateway() == "192.168.1.1"
 
     def test_returns_none_for_zero_gateway(self):
-        mock_conf = MagicMock()
-        mock_conf.route.route.return_value = ("en0", "0.0.0.0", "0.0.0.0")
         with patch("sondare.services.graph.platform.system", return_value="Darwin"), \
              patch("sondare.services.graph.get_network_interface", return_value="en0"), \
-             _patch_ipconfig("0.0.0.0\n"), \
-             patch("sondare.services.graph.conf", mock_conf):
+             _patch_ipconfig("0.0.0.0\n"):
             assert _get_gateway() is None
 
-    def test_falls_back_to_scapy_on_subprocess_failure(self):
-        mock_conf = MagicMock()
-        mock_conf.route.route.return_value = ("en0", "192.168.1.10", "192.168.1.1")
+    def test_returns_none_on_subprocess_failure(self):
         with patch("sondare.services.graph.platform.system", return_value="Darwin"), \
              patch("sondare.services.graph.get_network_interface", return_value="en0"), \
-             _patch_ipconfig(None), \
-             patch("sondare.services.graph.conf", mock_conf):
-            assert _get_gateway() == "192.168.1.1"
-
-    def test_returns_none_on_all_methods_failing(self):
-        mock_conf = MagicMock()
-        mock_conf.route.route.side_effect = Exception("no route")
-        with patch("sondare.services.graph.platform.system", return_value="Darwin"), \
-             patch("sondare.services.graph.get_network_interface", return_value="en0"), \
-             _patch_ipconfig(None), \
-             patch("sondare.services.graph.conf", mock_conf):
+             _patch_ipconfig(None):
             assert _get_gateway() is None
 
 

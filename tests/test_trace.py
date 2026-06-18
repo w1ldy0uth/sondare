@@ -102,15 +102,15 @@ def test_main_trace_json_output(capsys):
     assert False, "No JSON line found in output"
 
 
-def test_ipv6_target_uses_ipv6_layer():
-    from scapy.all import IPv6, ICMPv6EchoRequest
-    with patch("sondare.services.trace.sr1", return_value=None) as mock_sr1:
+def test_ipv6_target_calls_rust_traceroute_v6():
+    hops = [(1, "fe80::1", 0.5)]
+    with patch("sondare.services.trace._sondare.traceroute_v6", return_value=hops) as mock_v6, \
+         patch("sondare.services.trace.get_network_interface", return_value="eth0"):
         scanner = Traceroute(verbose=False, ip="fe80::1", timeout=1, max_hops=1)
         scanner.scan()
 
-    pkt = mock_sr1.call_args[0][0]
-    assert pkt.haslayer(IPv6)
-    assert pkt.haslayer(ICMPv6EchoRequest)
+    mock_v6.assert_called_once()
+    assert scanner.get_results()[0].ip == "fe80::1"
 
 
 def test_ipv4_scan_calls_rust_backend():
@@ -121,13 +121,3 @@ def test_ipv4_scan_calls_rust_backend():
         scanner.scan()
 
     mock_rust.assert_called_once()
-
-
-def test_ipv6_hlim_set_correctly():
-    from scapy.all import IPv6
-    with patch("sondare.services.trace.sr1", return_value=None) as mock_sr1:
-        scanner = Traceroute(verbose=False, ip="fe80::1", timeout=1, max_hops=3)
-        scanner.scan()
-
-    hlim_values = [mock_sr1.call_args_list[i][0][0][IPv6].hlim for i in range(3)]
-    assert hlim_values == [1, 2, 3]

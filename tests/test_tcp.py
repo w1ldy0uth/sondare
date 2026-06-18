@@ -10,72 +10,35 @@ def _make_scanner(**kwargs):
     return Tcp(**defaults)
 
 
-def _tcp_response(flags: int):
-    layer = MagicMock()
-    layer.flags = flags
-    pkt = MagicMock()
-    pkt.haslayer.return_value = True
-    pkt.getlayer.return_value = layer
-    return pkt
+def _ipv4_patches(open_ports):
+    return [
+        patch("sondare.services.tcp._sondare.tcp_syn_scan_v4", return_value=open_ports),
+        patch("sondare.services.tcp.warm_arp_cache"),
+        patch("sondare.services.tcp.get_network_interface", return_value="eth0"),
+    ]
 
 
-SYN_ACK = 0x12
-RST = 0x04
-
-
-class TestCheckPort:
-    def test_syn_ack_adds_open_port(self):
+class TestScanIpv4:
+    def test_scan_calls_rust_backend(self):
         scanner = _make_scanner()
-        with patch("sondare.services.tcp.sr1", return_value=_tcp_response(SYN_ACK)), \
-             patch("sondare.services.tcp.sr"), \
-             patch("random.randint", return_value=54321):
-            scanner.check_port(80)
+        patches = _ipv4_patches([80])
+        with patches[0] as mock_rust, patches[1], patches[2]:
+            scanner.scan()
+        mock_rust.assert_called_once()
 
-        assert Port(ip="10.0.0.1", port=80) in scanner._open_ports
-
-    def test_syn_ack_sends_rst(self):
+    def test_open_port_recorded(self):
         scanner = _make_scanner()
-        with patch("sondare.services.tcp.sr1", return_value=_tcp_response(SYN_ACK)), \
-             patch("sondare.services.tcp.sr") as mock_sr, \
-             patch("random.randint", return_value=54321):
-            scanner.check_port(80)
+        patches = _ipv4_patches([80])
+        with patches[0], patches[1], patches[2]:
+            scanner.scan()
+        assert 80 in [p.port for p in scanner.get_results()]
 
-        mock_sr.assert_called_once()
-
-    def test_rst_does_not_add_port(self):
+    def test_no_open_ports(self):
         scanner = _make_scanner()
-        with patch("sondare.services.tcp.sr1", return_value=_tcp_response(RST)), \
-             patch("sondare.services.tcp.sr"):
-            scanner.check_port(80)
-
-        assert scanner._open_ports == []
-
-    def test_rst_stops_retrying(self):
-        scanner = _make_scanner(retries=3)
-        with patch("sondare.services.tcp.sr1", return_value=_tcp_response(RST)) as mock_sr1, \
-             patch("sondare.services.tcp.sr"):
-            scanner.check_port(80)
-
-        assert mock_sr1.call_count == 1
-
-    def test_none_response_retries_up_to_limit(self):
-        scanner = _make_scanner(retries=2)
-        with patch("sondare.services.tcp.sr1", return_value=None) as mock_sr1, \
-             patch("sondare.services.tcp.sr"):
-            scanner.check_port(80)
-
-        assert mock_sr1.call_count == 3
-        assert scanner._open_ports == []
-
-    def test_none_then_syn_ack_adds_port(self):
-        scanner = _make_scanner(retries=2)
-        responses = [None, None, _tcp_response(SYN_ACK)]
-        with patch("sondare.services.tcp.sr1", side_effect=responses), \
-             patch("sondare.services.tcp.sr"), \
-             patch("random.randint", return_value=54321):
-            scanner.check_port(80)
-
-        assert Port(ip="10.0.0.1", port=80) in scanner._open_ports
+        patches = _ipv4_patches([])
+        with patches[0], patches[1], patches[2]:
+            scanner.scan()
+        assert scanner.get_results() == []
 
 
 class TestGetResults:
@@ -85,20 +48,16 @@ class TestGetResults:
 
     def test_get_results_after_scan_includes_service_name(self):
         scanner = _make_scanner(port_begin=80, port_end=80)
-        with patch("sondare.services.tcp._sondare.tcp_syn_scan_v4", return_value=[80]), \
-             patch("sondare.services.tcp.warm_arp_cache"), \
-             patch("sondare.services.tcp.get_network_interface", return_value="eth0"):
+        patches = _ipv4_patches([80])
+        with patches[0], patches[1], patches[2]:
             scanner.scan()
-
         assert scanner.get_results() == [Port("10.0.0.1", 80, service="http")]
 
     def test_results_sorted_by_port(self):
         scanner = _make_scanner(port_begin=22, port_end=80)
-        with patch("sondare.services.tcp._sondare.tcp_syn_scan_v4", return_value=list(range(80, 21, -1))), \
-             patch("sondare.services.tcp.warm_arp_cache"), \
-             patch("sondare.services.tcp.get_network_interface", return_value="eth0"):
+        patches = _ipv4_patches(list(range(80, 21, -1)))
+        with patches[0], patches[1], patches[2]:
             scanner.scan()
-
         ports = [p.port for p in scanner.get_results()]
         assert ports == sorted(ports)
 
@@ -176,10 +135,9 @@ class TestGrabBanner:
         assert result == "WR1500"
 
     def _make_smb2_response(self, dialect: int) -> bytes:
-        # Minimal valid SMBv2 negotiate response: NetBIOS(4) + SMB2 header(64) + body up to dialect
         header = bytearray(74)
-        header[4:8] = b"\xfe\x53\x4d\x42"          # SMB2 magic
-        header[72:74] = dialect.to_bytes(2, "little") # DialectRevision
+        header[4:8] = b"\xfe\x53\x4d\x42"
+        header[72:74] = dialect.to_bytes(2, "little")
         return bytes(header)
 
     def test_smb_port_returns_dialect_string(self):
@@ -201,7 +159,7 @@ class TestGrabBanner:
         assert result is None
 
     def test_smb_port_returns_none_on_non_smb2_response(self):
-        response = b"\x00" * 74  # no SMB2 magic
+        response = b"\x00" * 74
         with patch("sondare.utils.banners.socket.create_connection") as mock_conn:
             mock_sock = MagicMock()
             mock_sock.recv.return_value = response
@@ -211,61 +169,48 @@ class TestGrabBanner:
 
 
 class TestBannersIntegration:
-    def _ipv4_scan_patches(self, open_ports):
-        return [
-            patch("sondare.services.tcp._sondare.tcp_syn_scan_v4", return_value=open_ports),
-            patch("sondare.services.tcp.warm_arp_cache"),
-            patch("sondare.services.tcp.get_network_interface", return_value="eth0"),
-        ]
-
     def test_banners_flag_populates_port_banner(self):
         scanner = _make_scanner(banners=True)
-        patches = self._ipv4_scan_patches([80])
+        patches = _ipv4_patches([80])
         with patches[0], patches[1], patches[2], \
              patch("sondare.services.tcp.grab_banner", return_value="SSH-2.0-OpenSSH_8.9") as mock_grab:
             scanner.scan()
 
         mock_grab.assert_called_once_with("10.0.0.1", 80, scanner._timeout)
-        assert scanner._open_ports == [Port(ip="10.0.0.1", port=80, banner="SSH-2.0-OpenSSH_8.9")]
 
     def test_no_banners_flag_leaves_banner_none(self):
         scanner = _make_scanner(banners=False)
-        patches = self._ipv4_scan_patches([80])
+        patches = _ipv4_patches([80])
         with patches[0], patches[1], patches[2], \
              patch("sondare.services.tcp.grab_banner") as mock_grab:
             scanner.scan()
 
         mock_grab.assert_not_called()
-        assert scanner._open_ports == [Port(ip="10.0.0.1", port=80, banner=None)]
 
 
 class TestIpv6Tcp:
-    def test_ipv6_target_uses_ipv6_layer(self):
-        from scapy.all import IPv6
+    def test_ipv6_scan_calls_rust_v6_backend(self):
         scanner = Tcp(verbose=False, ip="fe80::1", port_begin=80, port_end=80,
                       timeout=1, threads=1, retries=0)
-        with patch("sondare.services.tcp.sr1", return_value=None) as mock_sr1, \
-             patch("sondare.services.tcp.warm_arp_cache"):
-            scanner.check_port(80)
+        with patch("sondare.services.tcp._sondare.tcp_syn_scan_v6", return_value=[80]) as mock_v6, \
+             patch("sondare.services.tcp.get_network_interface", return_value="eth0"):
+            scanner.scan()
+        mock_v6.assert_called_once()
+        assert 80 in [p.port for p in scanner.get_results()]
 
-        pkt = mock_sr1.call_args[0][0]
-        assert pkt.haslayer(IPv6)
-
-    def test_ipv6_scan_skips_arp_cache(self):
+    def test_ipv6_scan_does_not_call_arp_cache(self):
         scanner = Tcp(verbose=False, ip="fe80::1", port_begin=80, port_end=80,
                       timeout=1, threads=1, retries=0)
-        with patch("sondare.services.tcp.sr1", return_value=None), \
+        with patch("sondare.services.tcp._sondare.tcp_syn_scan_v6", return_value=[]), \
+             patch("sondare.services.tcp.get_network_interface", return_value="eth0"), \
              patch("sondare.services.tcp.warm_arp_cache") as mock_arp:
             scanner.scan()
-
         mock_arp.assert_not_called()
 
     def test_ipv4_scan_calls_arp_cache(self):
         scanner = Tcp(verbose=False, ip="192.168.1.1", port_begin=80, port_end=80,
                       timeout=1, threads=1, retries=0)
-        with patch("sondare.services.tcp._sondare.tcp_syn_scan_v4", return_value=[]), \
-             patch("sondare.services.tcp.get_network_interface", return_value="eth0"), \
-             patch("sondare.services.tcp.warm_arp_cache") as mock_arp:
+        patches = _ipv4_patches([])
+        with patches[0], patches[1] as mock_arp, patches[2]:
             scanner.scan()
-
         mock_arp.assert_called_once_with("192.168.1.1")

@@ -1,7 +1,7 @@
 use std::net::Ipv6Addr;
 use std::time::Duration;
 use sondare_codec::{ether, ipv6, icmpv6, Mac};
-use sondare_datalink::{by_name, Iface};
+use sondare_datalink::{by_name, Iface, RawChannel};
 
 use crate::{sweep, EngineError, SweepConfig};
 
@@ -47,6 +47,50 @@ fn parse_echo_reply(raw: &[u8], src_ip: Ipv6Addr) -> Option<(String, String)> {
     let ip_str = reply_ip.to_string();
     let mac_str = mac_to_string(eth.src);
     Some((ip_str, mac_str))
+}
+
+/// Resolve an IPv6 address to its MAC via NDP Neighbor Solicitation.
+pub fn resolve_mac_v6(iface_name: &str, target_ip: Ipv6Addr, timeout: Duration) -> Result<Mac, crate::EngineError> {
+    let iface: Iface = by_name(iface_name)
+        .map_err(|e| crate::EngineError::Channel(e.to_string()))?;
+    let src_ip = iface
+        .ipv6_ll
+        .ok_or_else(|| crate::EngineError::Channel(format!("{iface_name} has no IPv6 link-local address")))?;
+    let src_mac = iface.mac;
+
+    let sol_addr = icmpv6::solicited_node_addr(target_ip);
+    let sol_mac = icmpv6::solicited_node_mac(sol_addr);
+
+    // Build Neighbor Solicitation frame
+    let ns = icmpv6::NeighborSolicit { target: target_ip, src_mac };
+    let mut buf = vec![0u8; ether::LEN + ipv6::LEN + icmpv6::NS_WITH_SLLA_LEN];
+
+    let eth = ether::EtherHdr { dst: sol_mac, src: src_mac, ethertype: ether::ETYPE_IPV6 };
+    let mut off = eth.encode(&mut buf).unwrap();
+
+    let ip = ipv6::Ipv6Hdr::new(ipv6::NEXT_HDR_ICMPV6, src_ip, sol_addr, icmpv6::NS_WITH_SLLA_LEN as u16);
+    off += ip.encode(&mut buf[off..]).unwrap();
+
+    ns.encode(&mut buf[off..], src_ip, sol_addr).unwrap();
+
+    let mut ch = RawChannel::open(&iface)
+        .map_err(|e| crate::EngineError::Channel(e.to_string()))?;
+    ch.send(&buf).map_err(|e| crate::EngineError::Channel(e.to_string()))?;
+
+    // Wait for Neighbor Advertisement
+    let mac = ch.recv_filter(timeout, |raw| {
+        if raw.len() < ether::LEN + ipv6::LEN + icmpv6::NS_LEN { return None; }
+        let (eth, rest) = ether::EtherHdr::decode(raw).ok()?;
+        if eth.ethertype != ether::ETYPE_IPV6 { return None; }
+        let (ip, rest) = ipv6::Ipv6Hdr::decode(rest).ok()?;
+        if ip.next_header != ipv6::NEXT_HDR_ICMPV6 { return None; }
+        if rest.is_empty() || rest[0] != icmpv6::TYPE_NEIGHBOR_ADVERT { return None; }
+        let na = icmpv6::NeighborAdvert::decode(rest).ok()?;
+        if na.target != target_ip { return None; }
+        na.target_mac.or(Some(eth.src))
+    }).map_err(|_| crate::EngineError::Channel(format!("no NDP reply from {target_ip}")))?;
+
+    Ok(mac)
 }
 
 /// ICMPv6 multicast ping sweep of ff02::1. Returns (ipv6, mac) pairs.

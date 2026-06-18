@@ -65,42 +65,19 @@ class TestIsIpv6:
 
 
 class TestIpv6Ping:
-    def _make_v6_reply(self, has_reply: bool = True):
-        pkt = MagicMock()
-        pkt.haslayer.side_effect = lambda cls: has_reply and cls.__name__ == "ICMPv6EchoReply"
-        return pkt
-
-    def test_ipv6_target_sends_icmpv6(self):
-        with patch("sondare.services.icmp.sr1", return_value=None) as mock_sr1, \
+    def test_ipv6_target_calls_rust_sweep_v6(self):
+        with patch("sondare.services.icmp._sondare.icmp_sweep_v6", return_value=["fe80::1"]) as mock_v6, \
+             patch("sondare.services.icmp.get_network_interface", return_value="eth0"), \
              patch("builtins.print"):
             scanner = Ping(verbose=False, timeout=1, target="fe80::1")
             scanner.scan()
 
-        from scapy.all import IPv6, ICMPv6EchoRequest
-        mock_sr1.assert_called_once()
-        pkt = mock_sr1.call_args[0][0]
-        assert pkt.haslayer(IPv6)
-        assert pkt.haslayer(ICMPv6EchoRequest)
-
-    def test_ipv6_echo_reply_adds_host(self):
-        target = "fe80::dead:beef"
-        with patch("sondare.services.icmp.sr1", return_value=self._make_v6_reply(True)), \
-             patch("builtins.print"):
-            scanner = Ping(verbose=False, timeout=1, target=target)
-            scanner.scan()
-
-        assert scanner.get_results() == [target]
+        mock_v6.assert_called_once()
+        assert scanner.get_results() == ["fe80::1"]
 
     def test_ipv6_no_reply_empty_results(self):
-        with patch("sondare.services.icmp.sr1", return_value=None), \
-             patch("builtins.print"):
-            scanner = Ping(verbose=False, timeout=1, target="fe80::1")
-            scanner.scan()
-
-        assert scanner.get_results() == []
-
-    def test_ipv6_non_echo_reply_ignored(self):
-        with patch("sondare.services.icmp.sr1", return_value=self._make_v6_reply(False)), \
+        with patch("sondare.services.icmp._sondare.icmp_sweep_v6", return_value=[]), \
+             patch("sondare.services.icmp.get_network_interface", return_value="eth0"), \
              patch("builtins.print"):
             scanner = Ping(verbose=False, timeout=1, target="fe80::1")
             scanner.scan()
@@ -108,15 +85,16 @@ class TestIpv6Ping:
         assert scanner.get_results() == []
 
     def test_ipv6_does_not_call_icmp_sweep_v4(self):
-        with patch("sondare.services.icmp.sr1", return_value=None), \
-             patch("sondare.services.icmp._sondare.icmp_sweep_v4") as mock_sweep, \
+        with patch("sondare.services.icmp._sondare.icmp_sweep_v6", return_value=[]), \
+             patch("sondare.services.icmp._sondare.icmp_sweep_v4") as mock_v4, \
+             patch("sondare.services.icmp.get_network_interface", return_value="eth0"), \
              patch("builtins.print"):
             scanner = Ping(verbose=False, timeout=1, target="fe80::1")
             scanner.scan()
 
-        mock_sweep.assert_not_called()
+        mock_v4.assert_not_called()
 
-    def test_ipv4_target_uses_icmp_sweep_v4_not_sr1(self, net_mocks):
+    def test_ipv4_target_uses_icmp_sweep_v4(self, net_mocks):
         addrs, stats = net_mocks(ip="192.168.1.1")
         with patch("psutil.net_if_addrs", return_value=addrs), \
              patch("psutil.net_if_stats", return_value=stats):
@@ -124,12 +102,10 @@ class TestIpv6Ping:
 
         with patch("sondare.services.icmp._sondare.icmp_sweep_v4", return_value=[]) as mock_sweep, \
              patch("sondare.services.icmp.get_network_interface", return_value="eth0"), \
-             patch("sondare.services.icmp.sr1") as mock_sr1, \
              patch("builtins.print"):
             scanner.scan()
 
         mock_sweep.assert_called_once()
-        mock_sr1.assert_not_called()
 
     def test_ipv4_target_only_scans_that_host(self, net_mocks):
         addrs, stats = net_mocks(ip="192.168.1.1")
@@ -140,80 +116,34 @@ class TestIpv6Ping:
         assert scanner.hosts == ["192.168.1.2"]
 
 
-def _v6_multicast_reply(src_ip: str, is_reply: bool = True):
-    ipv6_layer = MagicMock()
-    ipv6_layer.src = src_ip
-    pkt = MagicMock()
-    pkt.haslayer.side_effect = lambda cls: is_reply and cls.__name__ == "ICMPv6EchoReply"
-    pkt.__getitem__ = MagicMock(side_effect=lambda cls: ipv6_layer if cls.__name__ == "IPv6" else MagicMock())
-    return pkt
-
-
 class TestIpv6MulticastScan:
-    def _scan(self, scanner, srp_pairs=None, local_ip="fe80::1"):
-        with patch("sondare.services.icmp.get_network_interface", return_value="eth0"), \
-             patch("sondare.services.icmp.get_ipv6_link_local", return_value=local_ip), \
-             patch("sondare.services.icmp.srp", return_value=(srp_pairs or [], None)), \
+    def test_ipv6_flag_calls_multicast_v6(self):
+        with patch("sondare.services.icmp._sondare.icmp_multicast_v6", return_value=["fe80::aaaa", "fe80::bbbb"]) as mock_mc, \
+             patch("sondare.services.icmp.get_network_interface", return_value="eth0"), \
              patch("builtins.print"):
+            scanner = Ping(verbose=False, timeout=3, ipv6=True)
             scanner.scan()
 
-    def test_ipv6_flag_triggers_multicast_scan(self):
-        with patch("sondare.services.icmp.get_network_interface", return_value="eth0"), \
-             patch("sondare.services.icmp.get_ipv6_link_local", return_value="fe80::1"), \
-             patch("sondare.services.icmp.srp", return_value=([], None)) as mock_srp, \
-             patch("builtins.print"):
-            Ping(verbose=False, timeout=3, ipv6=True).scan()
-
-        kwargs = mock_srp.call_args.kwargs
-        assert kwargs["multi"] is True
-        assert kwargs["iface"] == "eth0"
-
-    def test_multicast_collects_echo_replies(self):
-        pairs = [
-            (None, _v6_multicast_reply("fe80::aaaa")),
-            (None, _v6_multicast_reply("fe80::bbbb")),
-        ]
-        scanner = Ping(verbose=False, timeout=1, ipv6=True)
-        self._scan(scanner, srp_pairs=pairs)
-
+        mock_mc.assert_called_once()
         assert set(scanner.get_results()) == {"fe80::aaaa", "fe80::bbbb"}
 
-    def test_multicast_excludes_own_link_local(self):
-        own = "fe80::dead:beef"
-        pairs = [(None, _v6_multicast_reply(own))]
-        scanner = Ping(verbose=False, timeout=1, ipv6=True)
-        self._scan(scanner, srp_pairs=pairs, local_ip=own)
+    def test_multicast_empty_results(self):
+        with patch("sondare.services.icmp._sondare.icmp_multicast_v6", return_value=[]), \
+             patch("sondare.services.icmp.get_network_interface", return_value="eth0"), \
+             patch("builtins.print"):
+            scanner = Ping(verbose=False, timeout=1, ipv6=True)
+            scanner.scan()
 
         assert scanner.get_results() == []
-
-    def test_multicast_ignores_non_echo_reply(self):
-        pairs = [(None, _v6_multicast_reply("fe80::1234", is_reply=False))]
-        scanner = Ping(verbose=False, timeout=1, ipv6=True)
-        self._scan(scanner, srp_pairs=pairs)
-
-        assert scanner.get_results() == []
-
-    def test_multicast_deduplicates_replies(self):
-        pairs = [
-            (None, _v6_multicast_reply("fe80::cafe")),
-            (None, _v6_multicast_reply("fe80::cafe")),
-        ]
-        scanner = Ping(verbose=False, timeout=1, ipv6=True)
-        self._scan(scanner, srp_pairs=pairs)
-
-        assert scanner.get_results() == ["fe80::cafe"]
 
     def test_ipv6_flag_does_not_call_icmp_sweep_v4(self):
-        with patch("sondare.services.icmp.get_network_interface", return_value="eth0"), \
-             patch("sondare.services.icmp.get_ipv6_link_local", return_value="fe80::1"), \
-             patch("sondare.services.icmp.srp", return_value=([], None)), \
-             patch("sondare.services.icmp._sondare.icmp_sweep_v4") as mock_sweep, \
-             patch("sondare.services.icmp.sr1") as mock_sr1, \
+        with patch("sondare.services.icmp._sondare.icmp_multicast_v6", return_value=[]), \
+             patch("sondare.services.icmp._sondare.icmp_sweep_v4") as mock_v4, \
+             patch("sondare.services.icmp.get_network_interface", return_value="eth0"), \
              patch("builtins.print"):
             Ping(verbose=False, timeout=1, ipv6=True).scan()
 
-        mock_sweep.assert_not_called()
-        mock_sr1.assert_not_called()
+        mock_v4.assert_not_called()
 
     def test_ipv6_flag_hosts_list_is_empty(self):
         scanner = Ping(verbose=False, timeout=1, ipv6=True)

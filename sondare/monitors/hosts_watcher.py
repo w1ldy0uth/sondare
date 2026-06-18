@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: UTF-8 -*-
 
-import threading
 import time
 from datetime import datetime
-from scapy.all import IPv6, ICMPv6EchoRequest, ICMPv6EchoReply, sr1
 from sondare import _sondare
 from sondare.utils.network import get_subnet, get_network_interface, is_ipv6_address
 
@@ -51,48 +49,23 @@ class HostsWatcher:
         self._state: dict[str, tuple[bool, str]] = {}  # ip -> (is_up, since)
         self._last_line_count = 0
 
-    def _ping_ipv6(self, host: str) -> bool:
-        ans = sr1(
-            IPv6(dst=host) / ICMPv6EchoRequest(),
-            timeout=self._timeout,
-            verbose=self._verbose,
-            promisc=False,
-        )
-        return bool(ans and ans.haslayer(ICMPv6EchoReply))
-
     def _round(self) -> dict[str, bool]:
         ipv4_hosts = [h for h in self._hosts if not is_ipv6_address(h)]
         ipv6_hosts = [h for h in self._hosts if is_ipv6_address(h)]
 
         results: dict[str, bool] = {}
+        iface = get_network_interface()
+        grace_ms = max(200, int(self._timeout * 1000 // 2))
 
         if ipv4_hosts:
-            iface = get_network_interface()
-            grace_ms = max(200, int(self._timeout * 1000 // 2))
             alive = set(_sondare.icmp_sweep_v4(iface, ipv4_hosts, 500, grace_ms))
             for h in ipv4_hosts:
                 results[h] = h in alive
 
         if ipv6_hosts:
-            lock = threading.Lock()
-            sem = threading.Semaphore(self._threads)
-
-            def probe(host: str) -> None:
-                try:
-                    up = self._ping_ipv6(host)
-                finally:
-                    sem.release()
-                with lock:
-                    results[host] = up
-
-            threads = []
-            for host in ipv6_hosts:
-                sem.acquire()
-                t = threading.Thread(target=probe, args=(host,), daemon=True)
-                t.start()
-                threads.append(t)
-            for t in threads:
-                t.join()
+            alive = set(_sondare.icmp_sweep_v6(iface, ipv6_hosts, 500, grace_ms))
+            for h in ipv6_hosts:
+                results[h] = h in alive
 
         return results
 
