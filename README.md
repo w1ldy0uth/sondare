@@ -3,7 +3,7 @@
 [![PyPI](https://img.shields.io/pypi/v/sondare)](https://pypi.org/project/sondare/)
 [![Python](https://img.shields.io/pypi/pyversions/sondare)](https://pypi.org/project/sondare/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![wakatime](https://wakatime.com/badge/user/d5c61628-a084-4928-9908-a7e2f98d7bc9/project/3befa230-730d-48ed-a570-358705a66a23.svg)](https://wakatime.com/badge/user/d5c61628-a084-4928-9908-a7e2f98d7bc9/project/3befa230-730d-48ed-a570-358705a66a23)
+[![wakatime](https://wakatime.com/badge/github/w1ldy0uth/sondare.svg)](https://wakatime.com/badge/github/w1ldy0uth/sondare)
 
 > *From italian: sonda di rete - network probe*
 
