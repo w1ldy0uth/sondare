@@ -59,7 +59,7 @@ class Ping:
         if subnet_scan:
             print(f"Scanning {len(self.hosts)} hosts ...", end=" ", flush=True)
         iface = get_network_interface()
-        grace_ms = max(200, int(self._timeout * 1000 // 2))
+        grace_ms = max(200, int(self._timeout * 1000))
         self.results = _sondare.icmp_sweep_v4(iface, self.hosts, 500, grace_ms)
         if subnet_scan:
             print("done")
@@ -74,14 +74,14 @@ class Ping:
         target = self._target
         print(f"Pinging {target} ...", end=" ", flush=True)
         iface = get_network_interface()
-        grace_ms = max(200, int(self._timeout * 1000 // 2))
+        grace_ms = max(200, int(self._timeout * 1000))
         self.results = _sondare.icmp_sweep_v6(iface, [target], 500, grace_ms)
         print("done")
 
     def _scan_icmpv6_multicast(self) -> None:
         iface = get_network_interface()
         print(f"Scanning ff02::1 on {iface} ...", end=" ", flush=True)
-        grace_ms = max(200, int(self._timeout * 1000 // 2))
+        grace_ms = max(200, int(self._timeout * 1000))
         self.results = _sondare.icmp_multicast_v6(iface, 500, grace_ms)
         print("done")
 

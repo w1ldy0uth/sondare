@@ -11,7 +11,7 @@ def _arp_scan(timeout: int, verbose: bool) -> list[str]:
     """ARP-scans the local subnet and returns a sorted list of live IPs."""
     cidr = get_subnet()
     iface = get_network_interface()
-    grace_ms = max(200, timeout * 500)
+    grace_ms = max(200, int(timeout * 1000 // 2))
     pairs = _sondare.arp_sweep_v4(iface, cidr, 500, grace_ms)
     return sorted(ip for ip, _mac in pairs)
 
@@ -55,7 +55,7 @@ class HostsWatcher:
 
         results: dict[str, bool] = {}
         iface = get_network_interface()
-        grace_ms = max(200, int(self._timeout * 1000 // 2))
+        grace_ms = max(200, int(self._timeout * 1000))
 
         if ipv4_hosts:
             alive = set(_sondare.icmp_sweep_v4(iface, ipv4_hosts, 500, grace_ms))

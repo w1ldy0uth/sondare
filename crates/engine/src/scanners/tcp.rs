@@ -66,6 +66,7 @@ pub fn tcp_syn_scan_v4(
     ports: Vec<u16>,
     pps: u32,
     grace_ms: u64,
+    retries: u32,
 ) -> Result<Vec<u16>, EngineError> {
     let iface: Iface = by_name(iface_name)
         .map_err(|e| EngineError::Channel(e.to_string()))?;
@@ -80,7 +81,6 @@ pub fn tcp_syn_scan_v4(
 
     let cfg = SweepConfig { pps, recv_grace: Duration::from_millis(grace_ms) };
 
-    // First pass: collect SYN-ACK (open) and RST-ACK (closed).
     let first = sweep(
         &iface,
         ports.iter().copied(),
@@ -98,13 +98,13 @@ pub fn tcp_syn_scan_v4(
         }
     }
 
-    // Retry only ports that sent no response at all (lost probe/response or filtered).
-    let silent: Vec<u16> = ports.iter()
-        .filter(|&&p| !responded.contains(&p))
-        .copied()
-        .collect();
+    for _ in 0..retries {
+        let silent: Vec<u16> = ports.iter()
+            .filter(|&&p| !responded.contains(&p))
+            .copied()
+            .collect();
+        if silent.is_empty() { break; }
 
-    if !silent.is_empty() {
         let retry = sweep(
             &iface,
             silent.into_iter(),
@@ -113,8 +113,9 @@ pub fn tcp_syn_scan_v4(
             cfg,
         )?;
         for r in retry {
-            if let Response::Open(p) = r {
-                open.push(p);
+            match r {
+                Response::Open(p)   => { open.push(p); responded.insert(p); }
+                Response::Closed(p) => { responded.insert(p); }
             }
         }
     }
@@ -169,6 +170,7 @@ pub fn tcp_syn_scan_v6(
     ports: Vec<u16>,
     pps: u32,
     grace_ms: u64,
+    retries: u32,
 ) -> Result<Vec<u16>, EngineError> {
     let iface: Iface = by_name(iface_name)
         .map_err(|e| EngineError::Channel(e.to_string()))?;
@@ -200,12 +202,13 @@ pub fn tcp_syn_scan_v6(
         }
     }
 
-    let silent: Vec<u16> = ports.iter()
-        .filter(|&&p| !responded.contains(&p))
-        .copied()
-        .collect();
+    for _ in 0..retries {
+        let silent: Vec<u16> = ports.iter()
+            .filter(|&&p| !responded.contains(&p))
+            .copied()
+            .collect();
+        if silent.is_empty() { break; }
 
-    if !silent.is_empty() {
         let retry = sweep(
             &iface,
             silent.into_iter(),
@@ -214,8 +217,9 @@ pub fn tcp_syn_scan_v6(
             cfg,
         )?;
         for r in retry {
-            if let Response::Open(p) = r {
-                open.push(p);
+            match r {
+                Response::Open(p)   => { open.push(p); responded.insert(p); }
+                Response::Closed(p) => { responded.insert(p); }
             }
         }
     }

@@ -36,10 +36,11 @@ class PortWatcher:
     def _scan(self) -> set[int]:
         iface = get_network_interface()
         ports = list(range(self._port_begin, self._port_end + 1))
-        grace_ms = max(200, int(self._timeout * 1000 // 2))
+        pps = self._threads * 25
+        grace_ms = max(200, int(self._timeout * 1000))
         if is_ipv6_address(self._ip):
-            return set(_sondare.tcp_syn_scan_v6(iface, self._ip, ports, 500, grace_ms))
-        return set(_sondare.tcp_syn_scan_v4(iface, self._ip, ports, 500, grace_ms))
+            return set(_sondare.tcp_syn_scan_v6(iface, self._ip, ports, pps, grace_ms))
+        return set(_sondare.tcp_syn_scan_v4(iface, self._ip, ports, pps, grace_ms))
 
     def watch(self) -> None:
         port_range = (

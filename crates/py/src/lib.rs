@@ -68,15 +68,16 @@ fn arp_sweep_v4(
 ///
 /// Returns list of open port numbers.
 #[pyfunction]
-#[pyo3(signature = (iface, target_ip, ports, pps=500, grace_ms=500))]
+#[pyo3(signature = (iface, target_ip, ports, pps=500, grace_ms=500, retries=2))]
 fn tcp_syn_scan_v4(
     iface: &str,
     target_ip: &str,
     ports: Vec<u16>,
     pps: u32,
     grace_ms: u64,
+    retries: u32,
 ) -> PyResult<Vec<u16>> {
-    _tcp_syn_scan_v4(iface, target_ip, ports, pps, grace_ms)
+    _tcp_syn_scan_v4(iface, target_ip, ports, pps, grace_ms, retries)
         .map_err(|e| PyRuntimeError::new_err(e.to_string()))
 }
 
@@ -87,15 +88,16 @@ fn tcp_syn_scan_v4(
 ///
 /// Returns list of open|filtered port numbers.
 #[pyfunction]
-#[pyo3(signature = (iface, target_ip, ports, pps=500, grace_ms=500))]
+#[pyo3(signature = (iface, target_ip, ports, pps=500, grace_ms=500, retries=2))]
 fn udp_scan_v4(
     iface: &str,
     target_ip: &str,
     ports: Vec<u16>,
     pps: u32,
     grace_ms: u64,
+    retries: u32,
 ) -> PyResult<Vec<u16>> {
-    _udp_scan_v4(iface, target_ip, ports, pps, grace_ms)
+    _udp_scan_v4(iface, target_ip, ports, pps, grace_ms, retries)
         .map_err(|e| PyRuntimeError::new_err(e.to_string()))
 }
 
@@ -165,17 +167,17 @@ fn icmp_multicast_v6(iface: &str, pps: u32, grace_ms: u64) -> PyResult<Vec<Strin
 
 /// SYN scan ports on a single IPv6 target.
 #[pyfunction]
-#[pyo3(signature = (iface, target_ip, ports, pps=500, grace_ms=500))]
-fn tcp_syn_scan_v6(iface: &str, target_ip: &str, ports: Vec<u16>, pps: u32, grace_ms: u64) -> PyResult<Vec<u16>> {
-    _tcp_syn_scan_v6(iface, target_ip, ports, pps, grace_ms)
+#[pyo3(signature = (iface, target_ip, ports, pps=500, grace_ms=500, retries=2))]
+fn tcp_syn_scan_v6(iface: &str, target_ip: &str, ports: Vec<u16>, pps: u32, grace_ms: u64, retries: u32) -> PyResult<Vec<u16>> {
+    _tcp_syn_scan_v6(iface, target_ip, ports, pps, grace_ms, retries)
         .map_err(|e| PyRuntimeError::new_err(e.to_string()))
 }
 
 /// UDP scan ports on a single IPv6 target.
 #[pyfunction]
-#[pyo3(signature = (iface, target_ip, ports, pps=500, grace_ms=500))]
-fn udp_scan_v6(iface: &str, target_ip: &str, ports: Vec<u16>, pps: u32, grace_ms: u64) -> PyResult<Vec<u16>> {
-    _udp_scan_v6(iface, target_ip, ports, pps, grace_ms)
+#[pyo3(signature = (iface, target_ip, ports, pps=500, grace_ms=500, retries=2))]
+fn udp_scan_v6(iface: &str, target_ip: &str, ports: Vec<u16>, pps: u32, grace_ms: u64, retries: u32) -> PyResult<Vec<u16>> {
+    _udp_scan_v6(iface, target_ip, ports, pps, grace_ms, retries)
         .map_err(|e| PyRuntimeError::new_err(e.to_string()))
 }
 

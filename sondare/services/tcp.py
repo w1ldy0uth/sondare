@@ -35,18 +35,20 @@ class Tcp:
 
     def _scan_ipv4(self) -> None:
         warm_arp_cache(self.ip)
-        iface = get_network_interface()
-        ports = list(range(self.port_begin, self.port_end + 1))
-        grace_ms = max(200, int(self._timeout * 1000 // 2))
-        open_port_nums = _sondare.tcp_syn_scan_v4(iface, self.ip, ports, 500, grace_ms)
-        self._open_ports = [Port(ip=self.ip, port=p) for p in open_port_nums]
-        self._finalise()
+        self._scan_rust(_sondare.tcp_syn_scan_v4)
 
     def _scan_ipv6(self) -> None:
+        self._scan_rust(_sondare.tcp_syn_scan_v6)
+
+    def _scan_rust(self, scan_fn) -> None:
         iface = get_network_interface()
         ports = list(range(self.port_begin, self.port_end + 1))
-        grace_ms = max(200, int(self._timeout * 1000 // 2))
-        open_port_nums = _sondare.tcp_syn_scan_v6(iface, self.ip, ports, 500, grace_ms)
+        pps = self.threads * 25
+        grace_ms = max(200, int(self._timeout * 1000))
+        total = len(ports)
+        print(f"\rScanning {total} port(s) on {self.ip} ...", end="", flush=True)
+        open_port_nums = scan_fn(iface, self.ip, ports, pps, grace_ms, self.retries)
+        print(f"\rScanning {total} port(s) on {self.ip} ... done")
         self._open_ports = [Port(ip=self.ip, port=p) for p in open_port_nums]
         self._finalise()
 

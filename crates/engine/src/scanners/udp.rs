@@ -63,6 +63,7 @@ pub fn udp_scan_v4(
     ports: Vec<u16>,
     pps: u32,
     grace_ms: u64,
+    retries: u32,
 ) -> Result<Vec<u16>, EngineError> {
     let iface: Iface = by_name(iface_name)
         .map_err(|e| EngineError::Channel(e.to_string()))?;
@@ -77,7 +78,6 @@ pub fn udp_scan_v4(
 
     let cfg = SweepConfig { pps, recv_grace: Duration::from_millis(grace_ms) };
 
-    // First pass: collect ICMP port-unreachable responses (closed ports).
     let first = sweep(
         &iface,
         ports.iter().copied(),
@@ -88,13 +88,13 @@ pub fn udp_scan_v4(
 
     let mut closed: HashSet<u16> = first.into_iter().collect();
 
-    // Retry only silent ports (no ICMP unreachable) to reduce false positives.
-    let silent: Vec<u16> = ports.iter()
-        .filter(|&&p| !closed.contains(&p))
-        .copied()
-        .collect();
+    for _ in 0..retries {
+        let silent: Vec<u16> = ports.iter()
+            .filter(|&&p| !closed.contains(&p))
+            .copied()
+            .collect();
+        if silent.is_empty() { break; }
 
-    if !silent.is_empty() {
         let retry = sweep(
             &iface,
             silent.into_iter(),
@@ -107,7 +107,6 @@ pub fn udp_scan_v4(
         }
     }
 
-    // Open|filtered = everything that was NOT confirmed closed.
     let mut open: Vec<u16> = ports.into_iter()
         .filter(|p| !closed.contains(p))
         .collect();
@@ -163,6 +162,7 @@ pub fn udp_scan_v6(
     ports: Vec<u16>,
     pps: u32,
     grace_ms: u64,
+    retries: u32,
 ) -> Result<Vec<u16>, EngineError> {
     let iface: Iface = by_name(iface_name)
         .map_err(|e| EngineError::Channel(e.to_string()))?;
@@ -187,12 +187,13 @@ pub fn udp_scan_v6(
 
     let mut closed: HashSet<u16> = first.into_iter().collect();
 
-    let silent: Vec<u16> = ports.iter()
-        .filter(|&&p| !closed.contains(&p))
-        .copied()
-        .collect();
+    for _ in 0..retries {
+        let silent: Vec<u16> = ports.iter()
+            .filter(|&&p| !closed.contains(&p))
+            .copied()
+            .collect();
+        if silent.is_empty() { break; }
 
-    if !silent.is_empty() {
         let retry = sweep(
             &iface,
             silent.into_iter(),

@@ -78,7 +78,7 @@ class OsFingerprinter:
 
     def _icmp_probe(self) -> None:
         iface = get_network_interface()
-        grace_ms = max(200, int(self._timeout * 1000 // 2))
+        grace_ms = max(200, int(self._timeout * 1000))
         if self._ipv6:
             alive = _sondare.icmp_sweep_v6(iface, [self.ip], 500, grace_ms)
         else:
@@ -97,7 +97,7 @@ class OsFingerprinter:
         warm_arp_cache(self.ip)
         iface = get_network_interface()
         ports = [self.port] if self.port is not None else _COMMON_PORTS
-        grace_ms = max(200, int(self._timeout * 1000 // 2))
+        grace_ms = max(200, int(self._timeout * 1000))
         try:
             result = _sondare.fingerprint_v4(iface, self.ip, ports, 500, grace_ms)
         except RuntimeError:
@@ -110,7 +110,7 @@ class OsFingerprinter:
     def _scan_ipv6(self) -> None:
         iface = get_network_interface()
         ports = [self.port] if self.port is not None else _COMMON_PORTS
-        grace_ms = max(200, int(self._timeout * 1000 // 2))
+        grace_ms = max(200, int(self._timeout * 1000))
         try:
             result = _sondare.fingerprint_v6(iface, self.ip, ports, 500, grace_ms)
         except RuntimeError:
