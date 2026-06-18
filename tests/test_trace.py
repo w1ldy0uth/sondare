@@ -10,14 +10,23 @@ def _make_reply(src: str) -> MagicMock:
     return reply
 
 
+def _rust_patches(hops):
+    """Mock Rust traceroute_v4 returning list of (ttl, ip_or_none, rtt_or_none)."""
+    return [
+        patch("sondare.services.trace._sondare.traceroute_v4", return_value=hops),
+        patch("sondare.services.trace.get_network_interface", return_value="eth0"),
+    ]
+
+
 def test_get_results_before_scan_returns_empty():
     scanner = Traceroute(verbose=False, ip="10.0.0.1")
     assert scanner.get_results() == []
 
 
 def test_scan_reaches_destination():
-    replies = [_make_reply("192.168.1.1"), _make_reply("10.0.0.1")]
-    with patch("sondare.services.trace.sr1", side_effect=replies):
+    hops = [(1, "192.168.1.1", 0.5), (2, "10.0.0.1", 1.2)]
+    patches = _rust_patches(hops)
+    with patches[0], patches[1]:
         scanner = Traceroute(verbose=False, ip="10.0.0.1", timeout=1)
         scanner.scan()
 
@@ -27,8 +36,9 @@ def test_scan_reaches_destination():
 
 
 def test_scan_non_responding_hop():
-    replies = [None, _make_reply("10.0.0.1")]
-    with patch("sondare.services.trace.sr1", side_effect=replies):
+    hops = [(1, None, None), (2, "10.0.0.1", 1.2)]
+    patches = _rust_patches(hops)
+    with patches[0], patches[1]:
         scanner = Traceroute(verbose=False, ip="10.0.0.1", timeout=1)
         scanner.scan()
 
@@ -38,7 +48,9 @@ def test_scan_non_responding_hop():
 
 
 def test_scan_stops_at_max_hops():
-    with patch("sondare.services.trace.sr1", return_value=None):
+    hops = [(i, None, None) for i in range(1, 6)]
+    patches = _rust_patches(hops)
+    with patches[0], patches[1]:
         scanner = Traceroute(verbose=False, ip="10.0.0.1", timeout=1, max_hops=5)
         scanner.scan()
 
@@ -46,9 +58,10 @@ def test_scan_stops_at_max_hops():
 
 
 def test_on_hop_callback_called_for_each_hop():
-    replies = [_make_reply("192.168.1.1"), _make_reply("10.0.0.1")]
+    hops = [(1, "192.168.1.1", 0.5), (2, "10.0.0.1", 1.2)]
     seen = []
-    with patch("sondare.services.trace.sr1", side_effect=replies):
+    patches = _rust_patches(hops)
+    with patches[0], patches[1]:
         scanner = Traceroute(verbose=False, ip="10.0.0.1", timeout=1, on_hop=seen.append)
         scanner.scan()
 
@@ -100,15 +113,14 @@ def test_ipv6_target_uses_ipv6_layer():
     assert pkt.haslayer(ICMPv6EchoRequest)
 
 
-def test_ipv4_target_uses_ip_layer():
-    from scapy.all import IP, ICMP
-    with patch("sondare.services.trace.sr1", return_value=None) as mock_sr1:
+def test_ipv4_scan_calls_rust_backend():
+    hops = [(1, None, None)]
+    patches = _rust_patches(hops)
+    with patches[0] as mock_rust, patches[1]:
         scanner = Traceroute(verbose=False, ip="8.8.8.8", timeout=1, max_hops=1)
         scanner.scan()
 
-    pkt = mock_sr1.call_args[0][0]
-    assert pkt.haslayer(IP)
-    assert pkt.haslayer(ICMP)
+    mock_rust.assert_called_once()
 
 
 def test_ipv6_hlim_set_correctly():

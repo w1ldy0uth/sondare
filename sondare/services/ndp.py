@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: UTF-8 -*-
 
-from scapy.all import Ether, IPv6, ICMPv6EchoRequest, ICMPv6EchoReply, srp
+from sondare import _sondare
 from sondare.models import Host
 from sondare.utils.network import (
-    get_network_interface, get_mac_vendor, get_ipv6_link_local,
-    read_ndp_cache, resolve_hostnames, IPV6_ALL_NODES_MAC, IPV6_ALL_NODES_ADDR,
+    get_network_interface, get_mac_vendor,
+    read_ndp_cache, resolve_hostnames, IPV6_ALL_NODES_ADDR,
 )
 
 
@@ -23,37 +23,19 @@ class Ndp:
         and stores the final host list. Active replies take precedence over cache entries.
         The scanner's own link-local address and multicast prefixes are excluded.
         """
-        iface    = get_network_interface()
-        local_ip = (get_ipv6_link_local(iface) or "").lower()
+        iface = get_network_interface()
+        grace_ms = max(200, int(self.timeout * 1000 // 2))
 
-        pkt = (
-            Ether(dst=IPV6_ALL_NODES_MAC) /
-            IPv6(dst=IPV6_ALL_NODES_ADDR) /
-            ICMPv6EchoRequest(id=0x5afe, seq=1)
-        )
         print(f"Scanning {IPV6_ALL_NODES_ADDR} on {iface} ...", end=" ", flush=True)
-        answer = srp(
-            pkt,
-            iface=iface,
-            timeout=self.timeout,
-            verbose=self.verbose,
-            promisc=False,
-            multi=True,
-        )[0]
+        pairs = _sondare.ndp_sweep(iface, 500, grace_ms)
         print("done")
 
-        hosts: dict[str, str] = {}  # normalized_ipv6 -> mac
-
-        for _, rcv in answer:
-            if not rcv.haslayer(ICMPv6EchoReply):
-                continue
-            ip  = rcv[IPv6].src.split("%")[0].lower()
-            mac = rcv[Ether].src.lower()
-            if ip != local_ip and not ip.startswith("ff"):
-                hosts[ip] = mac
+        hosts: dict[str, str] = {}
+        for ip, mac in pairs:
+            hosts[ip.lower()] = mac.lower()
 
         for ip, mac in read_ndp_cache(iface).items():
-            if ip not in hosts and ip != local_ip and not ip.startswith("ff"):
+            if ip not in hosts and not ip.startswith("ff"):
                 hosts[ip] = mac
 
         if self.resolve_hostname:

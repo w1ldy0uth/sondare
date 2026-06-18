@@ -5,8 +5,9 @@ import signal
 import time
 from collections.abc import Callable
 from scapy.all import IP, IPv6, ICMP, ICMPv6EchoRequest, sr1
+from sondare import _sondare
 from sondare.models import Hop
-from sondare.utils.network import is_ipv6_address
+from sondare.utils.network import is_ipv6_address, get_network_interface
 
 
 class Traceroute:
@@ -42,6 +43,22 @@ class Traceroute:
         return Hop(ttl=ttl, ip=reply.src, rtt_ms=rtt)
 
     def scan(self) -> None:
+        if self._ipv6:
+            self._scan_ipv6()
+        else:
+            self._scan_ipv4()
+
+    def _scan_ipv4(self) -> None:
+        iface = get_network_interface()
+        timeout_ms = int(self._timeout * 1000)
+        raw_hops = _sondare.traceroute_v4(iface, self.ip, self._max_hops, timeout_ms)
+        for ttl, ip, rtt_ms in raw_hops:
+            hop = Hop(ttl=ttl, ip=ip, rtt_ms=rtt_ms)
+            self._results.append(hop)
+            if self._on_hop:
+                self._on_hop(hop)
+
+    def _scan_ipv6(self) -> None:
         self._interrupted = False
 
         def _handler(_signum: int, _frame: object) -> None:

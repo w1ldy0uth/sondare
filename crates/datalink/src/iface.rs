@@ -1,4 +1,4 @@
-use std::net::Ipv4Addr;
+use std::net::{Ipv4Addr, Ipv6Addr};
 use pnet_datalink::NetworkInterface;
 use crate::error::DataLinkError;
 use sondare_codec::Mac;
@@ -8,6 +8,7 @@ pub struct Iface {
     pub name: String,
     pub mac: Mac,
     pub ipv4: Option<Ipv4Addr>,
+    pub ipv6_ll: Option<Ipv6Addr>,
     pub inner: NetworkInterface,
 }
 
@@ -22,7 +23,13 @@ pub fn list() -> Vec<Iface> {
             let ipv4 = i.ips.iter().find_map(|net| {
                 if let std::net::IpAddr::V4(a) = net.ip() { Some(a) } else { None }
             });
-            Iface { name: i.name.clone(), mac: mac_bytes, ipv4, inner: i }
+            let ipv6_ll = i.ips.iter().find_map(|net| {
+                if let std::net::IpAddr::V6(a) = net.ip() {
+                    let seg = a.segments();
+                    if seg[0] == 0xfe80 { Some(a) } else { None }
+                } else { None }
+            });
+            Iface { name: i.name.clone(), mac: mac_bytes, ipv4, ipv6_ll, inner: i }
         })
         .collect()
 }
