@@ -11,12 +11,12 @@ import threading
 from datetime import datetime
 from importlib.resources import files as _res_files
 
-from scapy.all import ARP, Ether, IPv6, ICMPv6EchoRequest, ICMPv6EchoReply, srp, conf
+from scapy.all import conf
+from sondare import _sondare
 from sondare.services.fingerprint import OsFingerprinter
 from sondare.utils.network import (
     get_subnet, get_network_interface, get_ip_address,
     get_ipv6_link_local, read_ndp_cache, get_mac_vendor,
-    IPV6_ALL_NODES_MAC, IPV6_ALL_NODES_ADDR,
 )
 
 _HTML_TEMPLATE = """\
@@ -184,38 +184,20 @@ class NetworkGraph:
         """Returns {mac: ipv4} from ARP broadcast."""
         cidr = get_subnet()
         iface = get_network_interface()
-        ans = srp(
-            Ether(dst="ff:ff:ff:ff:ff:ff") / ARP(pdst=cidr),
-            iface=iface,
-            timeout=self._timeout,
-            verbose=self._verbose,
-            promisc=False,
-        )[0]
-        return {rcv.hwsrc.lower(): rcv.psrc for _, rcv in ans}
+        grace_ms = max(200, int(self._timeout * 1000 // 2))
+        pairs = _sondare.arp_sweep_v4(iface, cidr, 500, grace_ms)
+        return {mac.lower(): ip for ip, mac in pairs}
 
     def _ndp_scan(self) -> dict[str, str]:
         """Returns {mac: ipv6} from ICMPv6 multicast echo + NDP neighbor cache."""
         iface = get_network_interface()
-        local_v6 = (get_ipv6_link_local(iface) or "").lower()
-        pkt = (
-            Ether(dst=IPV6_ALL_NODES_MAC)
-            / IPv6(dst=IPV6_ALL_NODES_ADDR)
-            / ICMPv6EchoRequest(id=0x5afe, seq=1)
-        )
-        ans = srp(
-            pkt, iface=iface, timeout=self._timeout, verbose=self._verbose,
-            promisc=False, multi=True,
-        )[0]
+        grace_ms = max(200, int(self._timeout * 1000 // 2))
+        pairs = _sondare.ndp_sweep(iface, 500, grace_ms)
         result: dict[str, str] = {}
-        for _, rcv in ans:
-            if not rcv.haslayer(ICMPv6EchoReply):
-                continue
-            ip  = rcv[IPv6].src.split("%")[0].lower()
-            mac = rcv[Ether].src.lower()
-            if ip != local_v6 and not ip.startswith("ff"):
-                result[mac] = ip
+        for ip, mac in pairs:
+            result[mac.lower()] = ip.lower()
         for ip, mac in read_ndp_cache(iface).items():
-            if mac not in result and ip != local_v6 and not ip.startswith("ff"):
+            if mac not in result and not ip.startswith("ff"):
                 result[mac] = ip
         return result
 
