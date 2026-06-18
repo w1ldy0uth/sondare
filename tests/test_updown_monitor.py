@@ -26,40 +26,26 @@ def _two_sleeps_then_interrupt():
 
 
 class TestUpDownMonitor:
-    def test_ping_returns_true_on_icmp_reply(self):
-        m = _monitor()
-        icmp_reply = MagicMock()
-        icmp_reply.haslayer.return_value = True
-        icmp_reply.getlayer.return_value = MagicMock(type=0)
-        with patch("sondare.monitors.hosts_watcher.sr1", return_value=icmp_reply):
-            assert m._ping("192.168.1.1") is True
-
-    def test_ping_returns_false_on_no_response(self):
-        m = _monitor()
-        with patch("sondare.monitors.hosts_watcher.sr1", return_value=None):
-            assert m._ping("192.168.1.1") is False
-
-    def test_ping_returns_false_on_non_echo_reply(self):
-        m = _monitor()
-        pkt = MagicMock()
-        pkt.haslayer.return_value = True
-        pkt.getlayer.return_value = MagicMock(type=3)
-        with patch("sondare.monitors.hosts_watcher.sr1", return_value=pkt):
-            assert m._ping("192.168.1.1") is False
+    def test_ipv4_round_uses_rust_icmp_sweep(self):
+        m = _monitor(hosts=["192.168.1.1", "192.168.1.2"])
+        with patch("sondare.monitors.hosts_watcher._sondare.icmp_sweep_v4", return_value=["192.168.1.1"]) as mock_rust, \
+             patch("sondare.monitors.hosts_watcher.get_network_interface", return_value="en0"):
+            result = m._round()
+        mock_rust.assert_called_once()
+        assert result["192.168.1.1"] is True
+        assert result["192.168.1.2"] is False
 
     def test_round_returns_result_for_every_host(self):
         m = _monitor(hosts=["10.0.0.1", "10.0.0.2", "10.0.0.3"])
-        with patch.object(m, "_ping", return_value=True):
+        with patch("sondare.monitors.hosts_watcher._sondare.icmp_sweep_v4", return_value=["10.0.0.1", "10.0.0.3"]), \
+             patch("sondare.monitors.hosts_watcher.get_network_interface", return_value="en0"):
             result = m._round()
         assert set(result.keys()) == {"10.0.0.1", "10.0.0.2", "10.0.0.3"}
 
     def test_round_maps_up_and_down_correctly(self):
         m = _monitor(hosts=["10.0.0.1", "10.0.0.2"])
-
-        def fake_ping(host):
-            return host == "10.0.0.1"
-
-        with patch.object(m, "_ping", side_effect=fake_ping):
+        with patch("sondare.monitors.hosts_watcher._sondare.icmp_sweep_v4", return_value=["10.0.0.1"]), \
+             patch("sondare.monitors.hosts_watcher.get_network_interface", return_value="en0"):
             result = m._round()
         assert result["10.0.0.1"] is True
         assert result["10.0.0.2"] is False
@@ -218,7 +204,7 @@ class TestIpv6HostsWatcher:
             return None
 
         with patch("sondare.monitors.hosts_watcher.sr1", side_effect=fake_sr1):
-            m._ping("fe80::1")
+            m._ping_ipv6("fe80::1")
 
         from scapy.all import IPv6, ICMPv6EchoRequest
         assert any(pkt.haslayer(IPv6) and pkt.haslayer(ICMPv6EchoRequest) for pkt in sent_pkts)
@@ -226,36 +212,21 @@ class TestIpv6HostsWatcher:
     def test_ping_ipv6_returns_true_on_echo_reply(self):
         m = _monitor()
         with patch("sondare.monitors.hosts_watcher.sr1", return_value=self._make_v6_reply(True)):
-            assert m._ping("fe80::1") is True
+            assert m._ping_ipv6("fe80::1") is True
 
     def test_ping_ipv6_returns_false_on_no_response(self):
         m = _monitor()
         with patch("sondare.monitors.hosts_watcher.sr1", return_value=None):
-            assert m._ping("fe80::1") is False
+            assert m._ping_ipv6("fe80::1") is False
 
     def test_ping_ipv6_returns_false_on_wrong_reply(self):
         m = _monitor()
         with patch("sondare.monitors.hosts_watcher.sr1", return_value=self._make_v6_reply(False)):
-            assert m._ping("fe80::1") is False
-
-    def test_ping_ipv4_does_not_use_icmpv6(self):
-        m = _monitor()
-        sent_pkts = []
-
-        def fake_sr1(pkt, **_kw):
-            sent_pkts.append(pkt)
-            return None
-
-        with patch("sondare.monitors.hosts_watcher.sr1", side_effect=fake_sr1):
-            m._ping("192.168.1.1")
-
-        from scapy.all import ICMPv6EchoRequest
-        assert not any(pkt.haslayer(ICMPv6EchoRequest) for pkt in sent_pkts)
+            assert m._ping_ipv6("fe80::1") is False
 
     def test_draw_widens_column_for_ipv6_address(self, capsys):
         m = _monitor(hosts=[])
         m._state = {"fe80::dead:beef:1234:5678": (True, "12:00:00")}
         m._draw("12:00:00")
         out = capsys.readouterr().out
-        # The IPv6 address must appear without truncation
         assert "fe80::dead:beef:1234:5678" in out

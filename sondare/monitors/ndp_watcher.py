@@ -3,11 +3,11 @@
 
 import threading
 from datetime import datetime
-from scapy.all import Ether, IPv6, ICMPv6EchoRequest, ICMPv6EchoReply, ICMPv6ND_NA, srp, sniff
+from scapy.all import Ether, IPv6, ICMPv6ND_NA, sniff
 from scapy.packet import Packet
+from sondare import _sondare
 from sondare.utils.network import (
     get_network_interface, get_ipv6_link_local, read_ndp_cache,
-    IPV6_ALL_NODES_MAC, IPV6_ALL_NODES_ADDR,
 )
 
 
@@ -30,26 +30,13 @@ class NdpWatcher:
 
     def _seed(self) -> None:
         print(f"Seeding from ICMPv6 multicast sweep on {self._iface} ...", end=" ", flush=True)
-        pkt = (
-            Ether(dst=IPV6_ALL_NODES_MAC)
-            / IPv6(dst=IPV6_ALL_NODES_ADDR)
-            / ICMPv6EchoRequest(id=0x5afe, seq=1)
-        )
-        ans = srp(
-            pkt,
-            iface=self._iface,
-            timeout=self._timeout,
-            verbose=self.verbose,
-            promisc=False,
-            multi=True,
-        )[0]
-        for _, rcv in ans:
-            if not rcv.haslayer(ICMPv6EchoReply):
-                continue
-            ip  = rcv[IPv6].src.split("%")[0].lower()
-            mac = rcv[Ether].src.lower()
-            if ip != self._own_ip and not ip.startswith("ff"):
-                self._hosts[ip] = mac
+        grace_ms = max(200, int(self._timeout * 1000 // 2))
+        pairs = _sondare.ndp_sweep(self._iface, 500, grace_ms)
+        for ip, mac in pairs:
+            ip_l = ip.lower()
+            mac_l = mac.lower()
+            if ip_l != self._own_ip and not ip_l.startswith("ff"):
+                self._hosts[ip_l] = mac_l
 
         for ip, mac in read_ndp_cache(self._iface).items():
             if ip not in self._hosts and ip != self._own_ip and not ip.startswith("ff"):

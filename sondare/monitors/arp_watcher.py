@@ -3,8 +3,9 @@
 
 import threading
 from datetime import datetime
-from scapy.all import ARP, Ether, srp, sniff
+from scapy.all import ARP, sniff
 from scapy.packet import Packet
+from sondare import _sondare
 from sondare.utils.network import get_subnet, get_network_interface
 
 
@@ -26,15 +27,10 @@ class ArpWatcher:
         cidr = get_subnet()
         iface = get_network_interface()
         print(f"Seeding from ARP scan of {cidr} ...", end=" ", flush=True)
-        ans = srp(
-            Ether(dst="ff:ff:ff:ff:ff:ff") / ARP(pdst=cidr),
-            iface=iface,
-            timeout=self._timeout,
-            verbose=self.verbose,
-            promisc=False,
-        )[0]
-        for _, rcv in ans:
-            self._hosts[rcv.psrc] = rcv.hwsrc
+        grace_ms = max(200, int(self._timeout * 1000 // 2))
+        pairs = _sondare.arp_sweep_v4(iface, cidr, 500, grace_ms)
+        for ip, mac in pairs:
+            self._hosts[ip] = mac.lower()
         print(f"found {len(self._hosts)} host(s)")
         if self._hosts:
             ip_w = max(len(ip) for ip in self._hosts) + 2

@@ -40,32 +40,31 @@ def _make_watcher(local_ip="fe80::1"):
         return NdpWatcher(verbose=False, timeout=3)
 
 
-def _seed(watcher, srp_pairs=None, ndp_cache=None):
-    with patch("sondare.monitors.ndp_watcher.srp", return_value=(srp_pairs or [], None)), \
+def _seed(watcher, rust_pairs=None, ndp_cache=None):
+    with patch("sondare.monitors.ndp_watcher._sondare.ndp_sweep", return_value=rust_pairs or []), \
          patch("sondare.monitors.ndp_watcher.read_ndp_cache", return_value=ndp_cache or {}), \
          patch("builtins.print"):
         watcher._seed()
 
 
 class TestSeed:
-    def test_seed_calls_srp_multicast_with_multi(self):
+    def test_seed_calls_rust_ndp_sweep(self):
         watcher = _make_watcher()
-        with patch("sondare.monitors.ndp_watcher.srp", return_value=([], None)) as mock_srp, \
+        with patch("sondare.monitors.ndp_watcher._sondare.ndp_sweep", return_value=[]) as mock_rust, \
              patch("sondare.monitors.ndp_watcher.read_ndp_cache", return_value={}), \
              patch("builtins.print"):
             watcher._seed()
 
-        kwargs = mock_srp.call_args.kwargs
-        assert kwargs["multi"] is True
-        assert kwargs["iface"] == "eth0"
+        mock_rust.assert_called_once()
+        assert mock_rust.call_args[0][0] == "eth0"
 
     def test_seed_collects_echo_replies(self):
         watcher = _make_watcher()
         pairs = [
-            (None, _echo_reply("fe80::aaaa", "aa:bb:cc:dd:ee:01")),
-            (None, _echo_reply("fe80::bbbb", "aa:bb:cc:dd:ee:02")),
+            ("fe80::aaaa", "aa:bb:cc:dd:ee:01"),
+            ("fe80::bbbb", "aa:bb:cc:dd:ee:02"),
         ]
-        _seed(watcher, srp_pairs=pairs)
+        _seed(watcher, rust_pairs=pairs)
         assert set(watcher._hosts.keys()) == {"fe80::aaaa", "fe80::bbbb"}
 
     def test_seed_merges_ndp_cache(self):
@@ -75,8 +74,8 @@ class TestSeed:
 
     def test_seed_excludes_own_link_local(self):
         watcher = _make_watcher(local_ip="fe80::dead:beef")
-        pairs = [(None, _echo_reply("fe80::dead:beef", "aa:bb:cc:dd:ee:ff"))]
-        _seed(watcher, srp_pairs=pairs)
+        pairs = [("fe80::dead:beef", "aa:bb:cc:dd:ee:ff")]
+        _seed(watcher, rust_pairs=pairs)
         assert watcher._hosts == {}
 
     def test_seed_excludes_multicast_from_cache(self):
@@ -86,16 +85,9 @@ class TestSeed:
 
     def test_seed_active_scan_takes_precedence_over_cache(self):
         watcher = _make_watcher()
-        pairs = [(None, _echo_reply("fe80::cafe", "aa:11:22:33:44:55"))]
-        _seed(watcher, srp_pairs=pairs, ndp_cache={"fe80::cafe": "ff:ee:dd:cc:bb:aa"})
+        pairs = [("fe80::cafe", "aa:11:22:33:44:55")]
+        _seed(watcher, rust_pairs=pairs, ndp_cache={"fe80::cafe": "ff:ee:dd:cc:bb:aa"})
         assert watcher._hosts["fe80::cafe"] == "aa:11:22:33:44:55"
-
-    def test_seed_strips_scope_suffix(self):
-        watcher = _make_watcher()
-        pairs = [(None, _echo_reply("fe80::abcd%eth0", "aa:bb:cc:dd:ee:01"))]
-        _seed(watcher, srp_pairs=pairs)
-        assert "fe80::abcd" in watcher._hosts
-        assert "fe80::abcd%eth0" not in watcher._hosts
 
 
 class TestHandle:

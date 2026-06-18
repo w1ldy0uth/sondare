@@ -6,33 +6,27 @@ import threading
 import time
 from datetime import datetime
 from queue import Queue
-from scapy.all import IP, IPv6, TCP, sr1, sr
-from sondare.utils.network import warm_arp_cache, is_ipv6_address
+from scapy.all import IPv6, TCP, sr1, sr
+from sondare import _sondare
+from sondare.utils.network import get_network_interface, warm_arp_cache, is_ipv6_address
 
 
-def _syn_scan(ip: str, port_begin: int, port_end: int, timeout: float, threads: int, verbose: bool) -> set[int]:
-    """SYN scan that returns open ports with no console output.
-
-    Deliberately simpler than Tcp.check_port: no retries and no AdaptivePool,
-    because the monitor wants a fast, quiet snapshot rather than reliable
-    per-port confirmation.
-    """
+def _syn_scan_ipv6(ip: str, port_begin: int, port_end: int, timeout: float, threads: int, verbose: bool) -> set[int]:
+    """SYN scan for IPv6 targets via Scapy."""
     open_ports: set[int] = set()
     lock = threading.Lock()
     q: Queue[int] = Queue()
-    ipv6 = is_ipv6_address(ip)
 
     def check(port: int) -> None:
         sport = random.randint(1025, 65534)
-        ip_layer = IPv6(dst=ip) if ipv6 else IP(dst=ip)
         rsp = sr1(
-            ip_layer / TCP(sport=sport, dport=port, flags="S"),
+            IPv6(dst=ip) / TCP(sport=sport, dport=port, flags="S"),
             timeout=timeout,
             verbose=verbose,
             promisc=False,
         )
         if rsp and rsp.haslayer(TCP) and rsp.getlayer(TCP).flags == 0x12:
-            sr(ip_layer / TCP(sport=sport, dport=port, flags="R"), timeout=1, verbose=False, promisc=False)
+            sr(IPv6(dst=ip) / TCP(sport=sport, dport=port, flags="R"), timeout=1, verbose=False, promisc=False)
             with lock:
                 open_ports.add(port)
 
@@ -81,14 +75,19 @@ class PortWatcher:
         self._open: set[int] = set()
 
     def _scan(self) -> set[int]:
-        return _syn_scan(
-            ip=self._ip,
-            port_begin=self._port_begin,
-            port_end=self._port_end,
-            timeout=self._timeout,
-            threads=self._threads,
-            verbose=self._verbose,
-        )
+        if is_ipv6_address(self._ip):
+            return _syn_scan_ipv6(
+                ip=self._ip,
+                port_begin=self._port_begin,
+                port_end=self._port_end,
+                timeout=self._timeout,
+                threads=self._threads,
+                verbose=self._verbose,
+            )
+        iface = get_network_interface()
+        ports = list(range(self._port_begin, self._port_end + 1))
+        grace_ms = max(200, int(self._timeout * 1000 // 2))
+        return set(_sondare.tcp_syn_scan_v4(iface, self._ip, ports, 500, grace_ms))
 
     def watch(self) -> None:
         port_range = (
