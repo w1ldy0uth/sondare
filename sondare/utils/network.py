@@ -145,14 +145,26 @@ def get_port_service(port: int, proto: str = "tcp") -> str | None:
         return None
 
 
+_oui_db: dict[str, str] | None = None
+
+def _load_oui() -> dict[str, str]:
+    global _oui_db
+    if _oui_db is not None:
+        return _oui_db
+    import gzip, json
+    from importlib.resources import files as _res_files
+    try:
+        raw = _res_files("sondare").joinpath("static/oui.json.gz").read_bytes()
+        _oui_db = json.loads(gzip.decompress(raw))
+    except Exception:
+        _oui_db = {}
+    return _oui_db
+
+
 def get_mac_vendor(mac: str) -> str | None:
     """Returns the full OUI vendor name for a MAC address, or None if unknown."""
-    try:
-        from scapy.all import conf
-        short, long = conf.manufdb._get_manuf_couple(mac)
-        return long if long != mac else None
-    except Exception:
-        return None
+    prefix = mac.lower().replace(":", "").replace("-", "")[:6]
+    return _load_oui().get(prefix)
 
 
 def resolve_hostname(ip: str) -> str | None:
@@ -280,17 +292,6 @@ def read_ndp_cache(iface: str) -> dict[str, str]:
         pass
     return result
 
-
-def warm_arp_cache(ip: str) -> None:
-    """ARP-resolves ip and stores the result in Scapy's cache to avoid promiscuous mode errors."""
-    from scapy.all import ARP, Ether, srp, conf
-    iface = get_network_interface()
-    ans, _ = srp(
-        Ether(dst="ff:ff:ff:ff:ff:ff") / ARP(pdst=ip),
-        iface=iface, timeout=2, verbose=False, promisc=False
-    )
-    for _, rcv in ans:
-        conf.netcache.arp_cache[rcv.psrc] = rcv.hwsrc
 
 
 def get_subnet() -> str:

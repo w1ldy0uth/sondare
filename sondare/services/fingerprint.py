@@ -4,7 +4,7 @@
 from sondare import _sondare
 from sondare.models import Fingerprint
 from sondare.utils.network import (
-    warm_arp_cache, is_ipv6_address, get_network_interface,
+    is_ipv6_address, get_network_interface,
 )
 
 _COMMON_PORTS = [80, 443, 22, 8080, 21, 25, 3389, 445, 23, 53]
@@ -94,7 +94,6 @@ class OsFingerprinter:
             self._scan_ipv4()
 
     def _scan_ipv4(self) -> None:
-        warm_arp_cache(self.ip)
         iface = get_network_interface()
         ports = [self.port] if self.port is not None else _COMMON_PORTS
         grace_ms = max(200, int(self._timeout * 1000))

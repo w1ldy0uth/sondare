@@ -62,7 +62,6 @@ class TestGuessOs:
 def _ipv4_patches(rust_result):
     return [
         patch("sondare.services.fingerprint._sondare.fingerprint_v4", return_value=rust_result),
-        patch("sondare.services.fingerprint.warm_arp_cache"),
         patch("sondare.services.fingerprint.get_network_interface", return_value="eth0"),
     ]
 
@@ -71,7 +70,7 @@ class TestOsFingerprinter:
     def test_syn_ack_produces_fingerprint(self):
         # (ttl, window, mss, wscale, has_timestamps, has_sack)
         patches = _ipv4_patches((64, 29200, None, None, False, False))
-        with patches[0], patches[1], patches[2]:
+        with patches[0], patches[1]:
             scanner = OsFingerprinter(verbose=False, ip="192.168.1.1", port=80, timeout=1)
             scanner.scan()
 
@@ -79,7 +78,7 @@ class TestOsFingerprinter:
 
     def test_no_response_returns_none(self):
         patches = _ipv4_patches(None)
-        with patches[0], patches[1], patches[2]:
+        with patches[0], patches[1]:
             scanner = OsFingerprinter(verbose=False, ip="192.168.1.1", port=80, timeout=1,
                                       icmp_fallback=False)
             scanner.scan()
@@ -88,7 +87,7 @@ class TestOsFingerprinter:
 
     def test_auto_probe_returns_fingerprint(self):
         patches = _ipv4_patches((64, 65535, None, None, False, False))
-        with patches[0], patches[1], patches[2]:
+        with patches[0], patches[1]:
             scanner = OsFingerprinter(verbose=False, ip="10.0.0.1", port=None, timeout=1)
             scanner.scan()
 
@@ -102,7 +101,7 @@ class TestOsFingerprinter:
 
     def test_icmp_fallback_when_no_tcp_response(self):
         patches = _ipv4_patches(None)
-        with patches[0], patches[1], patches[2], \
+        with patches[0], patches[1], \
              patch("sondare.services.fingerprint._sondare.icmp_sweep_v4", return_value=["10.0.0.1"]):
             scanner = OsFingerprinter(verbose=False, ip="10.0.0.1", port=80, timeout=1)
             scanner.scan()
@@ -114,7 +113,7 @@ class TestOsFingerprinter:
 
     def test_icmp_fallback_disabled_returns_none(self):
         patches = _ipv4_patches(None)
-        with patches[0], patches[1], patches[2]:
+        with patches[0], patches[1]:
             scanner = OsFingerprinter(verbose=False, ip="10.0.0.1", port=80, timeout=1,
                                       icmp_fallback=False)
             scanner.scan()
@@ -123,7 +122,7 @@ class TestOsFingerprinter:
 
     def test_icmp_fallback_skipped_when_tcp_succeeds(self):
         patches = _ipv4_patches((64, 65535, None, None, False, False))
-        with patches[0], patches[1], patches[2]:
+        with patches[0], patches[1]:
             scanner = OsFingerprinter(verbose=False, ip="10.0.0.1", port=80, timeout=1)
             scanner.scan()
 
@@ -133,7 +132,7 @@ class TestOsFingerprinter:
 
     def test_tcp_result_has_tcp_source(self):
         patches = _ipv4_patches((64, 29200, None, None, False, False))
-        with patches[0], patches[1], patches[2]:
+        with patches[0], patches[1]:
             scanner = OsFingerprinter(verbose=False, ip="10.0.0.1", port=80, timeout=1)
             scanner.scan()
 
@@ -141,7 +140,7 @@ class TestOsFingerprinter:
 
     def test_tcp_options_refine_macos_ios(self):
         patches = _ipv4_patches((64, 65535, 1460, 6, True, True))
-        with patches[0], patches[1], patches[2]:
+        with patches[0], patches[1]:
             scanner = OsFingerprinter(verbose=False, ip="10.0.0.1", port=80, timeout=1)
             scanner.scan()
 
@@ -152,7 +151,7 @@ class TestOsFingerprinter:
 
     def test_tcp_options_windows10_window(self):
         patches = _ipv4_patches((128, 64240, None, None, False, False))
-        with patches[0], patches[1], patches[2]:
+        with patches[0], patches[1]:
             scanner = OsFingerprinter(verbose=False, ip="10.0.0.1", port=80, timeout=1)
             scanner.scan()
 

@@ -4,7 +4,7 @@
 from sondare import _sondare
 from sondare.models import Port
 from sondare.utils.network import (
-    warm_arp_cache, get_port_service, is_ipv6_address, get_network_interface,
+    get_port_service, is_ipv6_address, get_network_interface,
 )
 
 
@@ -30,7 +30,6 @@ class Udp:
             self._scan_ipv4()
 
     def _scan_ipv4(self) -> None:
-        warm_arp_cache(self.ip)
         self._scan_rust(_sondare.udp_scan_v4)
 
     def _scan_ipv6(self) -> None:

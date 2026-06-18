@@ -31,7 +31,6 @@ class TestPortWatcher:
                 raise KeyboardInterrupt
 
         with patch.object(w, "_scan", side_effect=fake_scan), \
-             patch("sondare.monitors.port_watcher.warm_arp_cache"), \
              patch("sondare.monitors.port_watcher.time.sleep", side_effect=KeyboardInterrupt):
             try:
                 w.watch()
@@ -65,7 +64,6 @@ class TestPortWatcher:
                 raise KeyboardInterrupt
 
         with patch.object(w, "_scan", side_effect=fake_scan), \
-             patch("sondare.monitors.port_watcher.warm_arp_cache"), \
              patch("sondare.monitors.port_watcher.time.sleep", side_effect=fake_sleep):
             try:
                 w.watch()
@@ -97,7 +95,6 @@ class TestPortWatcher:
                 raise KeyboardInterrupt
 
         with patch.object(w, "_scan", side_effect=fake_scan), \
-             patch("sondare.monitors.port_watcher.warm_arp_cache"), \
              patch("sondare.monitors.port_watcher.time.sleep", side_effect=fake_sleep):
             try:
                 w.watch()
@@ -127,7 +124,6 @@ class TestPortWatcher:
                 raise KeyboardInterrupt
 
         with patch.object(w, "_scan", side_effect=fake_scan), \
-             patch("sondare.monitors.port_watcher.warm_arp_cache"), \
              patch("sondare.monitors.port_watcher.time.sleep", side_effect=fake_sleep):
             try:
                 w.watch()
@@ -159,7 +155,6 @@ class TestPortWatcher:
                 raise KeyboardInterrupt
 
         with patch.object(w, "_scan", side_effect=fake_scan), \
-             patch("sondare.monitors.port_watcher.warm_arp_cache"), \
              patch("sondare.monitors.port_watcher.time.sleep", side_effect=fake_sleep):
             try:
                 w.watch()
@@ -180,7 +175,6 @@ class TestPortWatcher:
                 raise KeyboardInterrupt
 
         with patch.object(w, "_scan", side_effect=fake_scan), \
-             patch("sondare.monitors.port_watcher.warm_arp_cache"), \
              patch("sondare.monitors.port_watcher.time.sleep", side_effect=KeyboardInterrupt):
             try:
                 w.watch()
@@ -208,23 +202,3 @@ class TestIpv6PortWatcher:
         mock_rust.assert_called_once()
         assert result == {80}
 
-    def test_ipv6_watch_skips_warm_arp_cache(self, capsys):
-        w = _watcher(ip="fe80::1")
-        with patch.object(w, "_scan", side_effect=KeyboardInterrupt), \
-             patch("sondare.monitors.port_watcher.warm_arp_cache") as mock_arp, \
-             patch("sondare.monitors.port_watcher.is_ipv6_address", return_value=True):
-            try:
-                w.watch()
-            except KeyboardInterrupt:
-                pass
-        mock_arp.assert_not_called()
-
-    def test_ipv4_watch_calls_warm_arp_cache(self, capsys):
-        w = _watcher(ip="192.168.1.1")
-        with patch.object(w, "_scan", side_effect=KeyboardInterrupt), \
-             patch("sondare.monitors.port_watcher.warm_arp_cache") as mock_arp:
-            try:
-                w.watch()
-            except KeyboardInterrupt:
-                pass
-        mock_arp.assert_called_once_with("192.168.1.1")

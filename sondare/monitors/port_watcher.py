@@ -4,7 +4,7 @@
 import time
 from datetime import datetime
 from sondare import _sondare
-from sondare.utils.network import get_network_interface, warm_arp_cache, is_ipv6_address
+from sondare.utils.network import get_network_interface, is_ipv6_address
 
 
 class PortWatcher:
@@ -52,8 +52,6 @@ class PortWatcher:
             f"Monitoring ports {port_range} on {self._ip}"
             f" every {self._interval}s - Ctrl+C to stop\n"
         )
-        if not is_ipv6_address(self._ip):
-            warm_arp_cache(self._ip)
         first = True
         while True:
             ts = datetime.now().strftime("%H:%M:%S")
