@@ -1,37 +1,28 @@
-from unittest.mock import patch, MagicMock, call
+import socket
+import struct
+from unittest.mock import patch
 from sondare.monitors.ndp_watcher import NdpWatcher
 
 
-def _na_pkt(src_ip: str, src_mac: str, has_na: bool = True):
-    """Mock ICMPv6 Neighbor Advertisement packet."""
-    ipv6_layer = MagicMock()
-    ipv6_layer.src = src_ip
-    ether_layer = MagicMock()
-    ether_layer.src = src_mac
-
-    pkt = MagicMock()
-    pkt.haslayer.side_effect = lambda cls: {
-        "IPv6": True,
-        "ICMPv6ND_NA": has_na,
-        "Ether": True,
-    }.get(cls.__name__, False)
-    pkt.__getitem__ = MagicMock(
-        side_effect=lambda cls: ipv6_layer if cls.__name__ == "IPv6" else ether_layer
-    )
-    return pkt
-
-
-def _echo_reply(src_ip: str, src_mac: str):
-    ipv6_layer = MagicMock()
-    ipv6_layer.src = src_ip
-    ether_layer = MagicMock()
-    ether_layer.src = src_mac
-    pkt = MagicMock()
-    pkt.haslayer.side_effect = lambda cls: cls.__name__ == "ICMPv6EchoReply"
-    pkt.__getitem__ = MagicMock(
-        side_effect=lambda cls: ipv6_layer if cls.__name__ == "IPv6" else ether_layer
-    )
-    return pkt
+def _make_na_frame(src_ip: str, src_mac: str) -> bytes:
+    """Build a minimal raw Ethernet+IPv6+ICMPv6 Neighbor Advertisement frame."""
+    mac_bytes = bytes(int(b, 16) for b in src_mac.split(":"))
+    ip_bytes = socket.inet_pton(socket.AF_INET6, src_ip)
+    # Ethernet header (14 bytes)
+    frame = bytearray(14 + 40 + 24)
+    frame[6:12] = mac_bytes
+    struct.pack_into("!H", frame, 12, 0x86DD)
+    # IPv6 header (40 bytes)
+    frame[14] = 0x60  # version 6
+    struct.pack_into("!H", frame, 14 + 4, 24)  # payload length
+    frame[14 + 6] = 58  # next header = ICMPv6
+    frame[14 + 7] = 255  # hop limit
+    frame[14 + 8 : 14 + 24] = ip_bytes  # src
+    # dst = all zeros (doesn't matter for parsing)
+    # ICMPv6 NA (type=136, code=0, checksum=0, flags+reserved=0, target=ip)
+    frame[54] = 136
+    frame[54 + 8 : 54 + 24] = ip_bytes  # target address
+    return bytes(frame)
 
 
 def _make_watcher(local_ip="fe80::1"):
@@ -93,7 +84,7 @@ class TestSeed:
 class TestHandle:
     def test_new_host_is_printed(self, capsys):
         watcher = _make_watcher()
-        watcher._handle(_na_pkt("fe80::1111", "aa:bb:cc:dd:ee:01"))
+        watcher._handle(_make_na_frame("fe80::1111", "aa:bb:cc:dd:ee:01"))
         out = capsys.readouterr().out
         assert "NEW" in out
         assert "fe80::1111" in out
@@ -101,7 +92,7 @@ class TestHandle:
     def test_changed_mac_is_printed(self, capsys):
         watcher = _make_watcher()
         watcher._hosts["fe80::1111"] = "aa:bb:cc:dd:ee:01"
-        watcher._handle(_na_pkt("fe80::1111", "ff:ee:dd:cc:bb:aa"))
+        watcher._handle(_make_na_frame("fe80::1111", "ff:ee:dd:cc:bb:aa"))
         out = capsys.readouterr().out
         assert "CHANGED" in out
         assert "NDP spoofing" in out
@@ -109,28 +100,28 @@ class TestHandle:
     def test_unchanged_host_is_silent(self, capsys):
         watcher = _make_watcher()
         watcher._hosts["fe80::1111"] = "aa:bb:cc:dd:ee:01"
-        watcher._handle(_na_pkt("fe80::1111", "aa:bb:cc:dd:ee:01"))
+        watcher._handle(_make_na_frame("fe80::1111", "aa:bb:cc:dd:ee:01"))
         out = capsys.readouterr().out
         assert out == ""
 
     def test_own_link_local_ignored(self, capsys):
         watcher = _make_watcher(local_ip="fe80::1")
-        watcher._handle(_na_pkt("fe80::1", "aa:bb:cc:dd:ee:ff"))
+        watcher._handle(_make_na_frame("fe80::1", "aa:bb:cc:dd:ee:ff"))
         assert capsys.readouterr().out == ""
 
     def test_multicast_address_ignored(self, capsys):
         watcher = _make_watcher()
-        watcher._handle(_na_pkt("ff02::1", "33:33:00:00:00:01"))
+        watcher._handle(_make_na_frame("ff02::1", "33:33:00:00:00:01"))
         assert capsys.readouterr().out == ""
 
-    def test_non_na_packet_ignored(self, capsys):
+    def test_non_na_frame_ignored(self, capsys):
         watcher = _make_watcher()
-        watcher._handle(_na_pkt("fe80::1234", "aa:bb:cc:dd:ee:01", has_na=False))
+        frame = bytearray(_make_na_frame("fe80::1234", "aa:bb:cc:dd:ee:01"))
+        frame[54] = 128  # change type to Echo Request
+        watcher._handle(bytes(frame))
         assert capsys.readouterr().out == ""
 
-    def test_scope_suffix_stripped(self, capsys):
+    def test_too_short_frame_ignored(self, capsys):
         watcher = _make_watcher()
-        watcher._handle(_na_pkt("fe80::abcd%eth0", "aa:bb:cc:dd:ee:01"))
-        out = capsys.readouterr().out
-        assert "fe80::abcd" in out
-        assert "%" not in out
+        watcher._handle(b"\x00" * 10)
+        assert capsys.readouterr().out == ""

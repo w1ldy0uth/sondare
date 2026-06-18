@@ -1,20 +1,38 @@
 #!/usr/bin/env python3
 # -*- coding: UTF-8 -*-
 
+import struct
 import threading
 from datetime import datetime
-from scapy.all import ARP, sniff
-from scapy.packet import Packet
 from sondare import _sondare
 from sondare.utils.network import get_subnet, get_network_interface
+
+# Ethernet header: 14 bytes (dst[6] + src[6] + ethertype[2])
+# ARP header: 28 bytes for IPv4
+_ETH_LEN = 14
+_ARP_MIN_LEN = _ETH_LEN + 28
+
+
+def _parse_arp(raw: bytes) -> tuple[str, str] | None:
+    """Extracts (sender_ip, sender_mac) from a raw Ethernet+ARP frame."""
+    if len(raw) < _ARP_MIN_LEN:
+        return None
+    ethertype = struct.unpack_from("!H", raw, 12)[0]
+    if ethertype != 0x0806:
+        return None
+    sha = raw[22:28]
+    spa = raw[28:32]
+    mac = ":".join(f"{b:02x}" for b in sha)
+    ip = ".".join(str(b) for b in spa)
+    return ip, mac
 
 
 class ArpWatcher:
     """
     Seeds known hosts with an initial ARP scan, then passively sniffs ARP
     traffic and prints events as they arrive:
-      NEW     — first time this IP is seen
-      CHANGED — same IP, different MAC (potential ARP spoofing)
+      NEW     - first time this IP is seen
+      CHANGED - same IP, different MAC (potential ARP spoofing)
     """
 
     def __init__(self, verbose: bool, timeout: float) -> None:
@@ -38,11 +56,11 @@ class ArpWatcher:
             for ip, mac in sorted(self._hosts.items()):
                 print(f"  {ip.ljust(ip_w)}{mac}")
 
-    def _handle(self, pkt: Packet) -> None:
-        arp = pkt.getlayer(ARP)
-        if arp is None:
+    def _handle(self, raw: bytes) -> None:
+        parsed = _parse_arp(raw)
+        if parsed is None:
             return
-        ip, mac = arp.psrc, arp.hwsrc
+        ip, mac = parsed
         if ip == "0.0.0.0":
             return
         ts = datetime.now().strftime("%H:%M:%S")
@@ -59,4 +77,4 @@ class ArpWatcher:
         self._seed()
         iface = get_network_interface()
         print(f"\nWatching for ARP traffic on {iface} (Ctrl+C to stop) ...\n")
-        sniff(iface=iface, filter="arp", prn=self._handle, store=False, promisc=False)
+        _sondare.sniff(iface, "arp", self._handle)

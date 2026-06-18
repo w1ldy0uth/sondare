@@ -1,5 +1,6 @@
 use pyo3::prelude::*;
-use pyo3::exceptions::PyRuntimeError;
+use pyo3::exceptions::{PyRuntimeError, PyKeyboardInterrupt};
+use pyo3::types::PyBytes;
 use sondare_engine::scanners::arp::arp_sweep_v4 as _arp_sweep_v4;
 use sondare_engine::scanners::icmp::icmp_sweep_v4 as _icmp_sweep_v4;
 use sondare_engine::scanners::tcp::tcp_syn_scan_v4 as _tcp_syn_scan_v4;
@@ -15,6 +16,7 @@ use sondare_engine::scanners::icmp::icmp_multicast_v6 as _icmp_multicast_v6;
 use sondare_engine::scanners::tcp::tcp_syn_scan_v6 as _tcp_syn_scan_v6;
 use sondare_engine::scanners::udp::udp_scan_v6 as _udp_scan_v6;
 use sondare_engine::scanners::fingerprint::fingerprint_v6 as _fingerprint_v6;
+use sondare_engine::sniffer::{PacketCapture, CaptureResult};
 
 /// Sweep a list of IPv4 targets via ICMP echo.
 ///
@@ -234,6 +236,33 @@ fn mdns_scan(
         .map_err(|e| PyRuntimeError::new_err(e.to_string()))
 }
 
+/// Sniff packets on an interface with a BPF filter.
+///
+/// Calls `callback(raw_bytes)` for each captured packet. Blocks until
+/// KeyboardInterrupt (Ctrl+C). The GIL is released during the pcap wait
+/// and re-acquired for each callback invocation.
+#[pyfunction]
+#[pyo3(signature = (iface, bpf_filter, callback))]
+fn sniff(py: Python<'_>, iface: &str, bpf_filter: &str, callback: PyObject) -> PyResult<()> {
+    let mut cap = PacketCapture::open(iface, bpf_filter, 100)
+        .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+
+    loop {
+        py.check_signals()?;
+
+        let result = py.allow_threads(|| cap.next_packet());
+
+        match result {
+            Ok(CaptureResult::Packet(data)) => {
+                let py_bytes = PyBytes::new(py, &data);
+                callback.call1(py, (py_bytes,))?;
+            }
+            Ok(CaptureResult::Timeout) => continue,
+            Err(e) => return Err(PyRuntimeError::new_err(e.to_string())),
+        }
+    }
+}
+
 #[pymodule]
 fn _sondare(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(arp_sweep_v4, m)?)?;
@@ -251,5 +280,6 @@ fn _sondare(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(udp_scan_v6, m)?)?;
     m.add_function(wrap_pyfunction!(fingerprint_v6, m)?)?;
     m.add_function(wrap_pyfunction!(traceroute_v6, m)?)?;
+    m.add_function(wrap_pyfunction!(sniff, m)?)?;
     Ok(())
 }

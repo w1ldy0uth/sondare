@@ -1,170 +1,143 @@
-from unittest.mock import MagicMock, patch
-from sondare.monitors.traffic_sniffer import TrafficSniffer, _tcp_info, _udp_info, _icmp_info, _arp_info
+import struct
+from unittest.mock import patch
+from sondare.monitors.traffic_sniffer import TrafficSniffer, _parse_packet
 
 
-def _make_ip(src="192.168.1.1", dst="192.168.1.2"):
-    ip = MagicMock()
-    ip.src, ip.dst = src, dst
-    return ip
+def _make_ipv4_frame(proto: int, src: str, dst: str, payload: bytes) -> bytes:
+    """Build Ethernet+IPv4+payload frame."""
+    src_ip = bytes(int(b) for b in src.split("."))
+    dst_ip = bytes(int(b) for b in dst.split("."))
+    ihl = 5
+    ip_len = ihl * 4 + len(payload)
+    frame = bytearray(14 + ihl * 4 + len(payload))
+    struct.pack_into("!H", frame, 12, 0x0800)
+    frame[14] = (4 << 4) | ihl
+    struct.pack_into("!H", frame, 14 + 2, ip_len)
+    frame[14 + 9] = proto
+    frame[14 + 12 : 14 + 16] = src_ip
+    frame[14 + 16 : 14 + 20] = dst_ip
+    frame[14 + ihl * 4 :] = payload
+    return bytes(frame)
+
+
+def _tcp_payload(sport: int, dport: int, flags: int) -> bytes:
+    p = bytearray(20)
+    struct.pack_into("!HH", p, 0, sport, dport)
+    p[12] = 5 << 4  # data offset
+    p[13] = flags
+    return bytes(p)
+
+
+def _udp_payload(sport: int, dport: int) -> bytes:
+    p = bytearray(8)
+    struct.pack_into("!HH", p, 0, sport, dport)
+    struct.pack_into("!H", p, 4, 8)
+    return bytes(p)
+
+
+def _icmp_payload(icmp_type: int) -> bytes:
+    return bytes([icmp_type, 0, 0, 0, 0, 0, 0, 0])
+
+
+def _arp_frame(op: int, spa: str, tpa: str, sha: str = "aa:bb:cc:dd:ee:ff") -> bytes:
+    mac_bytes = bytes(int(b, 16) for b in sha.split(":"))
+    spa_bytes = bytes(int(b) for b in spa.split("."))
+    tpa_bytes = bytes(int(b) for b in tpa.split("."))
+    frame = bytearray(42)
+    struct.pack_into("!H", frame, 12, 0x0806)
+    struct.pack_into("!HHBBH", frame, 14, 1, 0x0800, 6, 4, op)
+    frame[22:28] = mac_bytes
+    frame[28:32] = spa_bytes
+    frame[38:42] = tpa_bytes
+    return bytes(frame)
 
 
 def _sniffer(bpf_filter=None) -> TrafficSniffer:
     return TrafficSniffer(verbose=False, bpf_filter=bpf_filter)
 
 
-class TestPacketFormatters:
-    def test_tcp_info_extracts_src_dst_and_flags(self):
-        pkt = MagicMock()
-        pkt.getlayer.side_effect = lambda cls: _make_ip() if cls.__name__ == "IP" else MagicMock(sport=12345, dport=80, flags=MagicMock(__int__=lambda s: 0x02))
-        # Build real-ish mocks
-        ip = MagicMock(); ip.src = "10.0.0.1"; ip.dst = "10.0.0.2"
-        tcp = MagicMock(); tcp.sport = 54321; tcp.dport = 80; tcp.flags = 0x02
-
-        class FakePkt:
-            def getlayer(self, cls):
-                from scapy.all import IP, TCP
-                return ip if cls is IP else tcp
-
-        src, dst, info = _tcp_info(FakePkt())
+class TestParsePacket:
+    def test_tcp_syn(self):
+        raw = _make_ipv4_frame(6, "10.0.0.1", "10.0.0.2", _tcp_payload(54321, 80, 0x02))
+        result = _parse_packet(raw)
+        assert result is not None
+        proto, src, dst, info = result
+        assert proto == "TCP"
         assert src == "10.0.0.1:54321"
         assert dst == "10.0.0.2:80"
         assert info == "SYN"
 
-    def test_tcp_syn_ack_flag(self):
-        ip = MagicMock(); ip.src = "1.2.3.4"; ip.dst = "5.6.7.8"
-        tcp = MagicMock(); tcp.sport = 80; tcp.dport = 54321; tcp.flags = 0x12
+    def test_tcp_syn_ack(self):
+        raw = _make_ipv4_frame(6, "1.2.3.4", "5.6.7.8", _tcp_payload(80, 54321, 0x12))
+        result = _parse_packet(raw)
+        assert result[3] == "SYN-ACK"
 
-        class FakePkt:
-            def getlayer(self, cls):
-                from scapy.all import IP
-                return ip if cls is IP else tcp
+    def test_tcp_unknown_flags(self):
+        raw = _make_ipv4_frame(6, "1.1.1.1", "2.2.2.2", _tcp_payload(1, 2, 0xFF))
+        result = _parse_packet(raw)
+        assert "0xff" in result[3]
 
-        _, _, info = _tcp_info(FakePkt())
-        assert info == "SYN-ACK"
-
-    def test_tcp_unknown_flags_hex(self):
-        ip = MagicMock(); ip.src = "1.1.1.1"; ip.dst = "2.2.2.2"
-        tcp = MagicMock(); tcp.sport = 1; tcp.dport = 2; tcp.flags = 0xFF
-
-        class FakePkt:
-            def getlayer(self, cls):
-                from scapy.all import IP
-                return ip if cls is IP else tcp
-
-        _, _, info = _tcp_info(FakePkt())
-        assert "0xff" in info
-
-    def test_udp_info_extracts_ports(self):
-        ip = MagicMock(); ip.src = "10.0.0.1"; ip.dst = "8.8.8.8"
-        udp = MagicMock(); udp.sport = 12345; udp.dport = 53
-
-        class FakePkt:
-            def getlayer(self, cls):
-                from scapy.all import IP
-                return ip if cls is IP else udp
-
-        src, dst, info = _udp_info(FakePkt())
+    def test_udp(self):
+        raw = _make_ipv4_frame(17, "10.0.0.1", "8.8.8.8", _udp_payload(12345, 53))
+        result = _parse_packet(raw)
+        assert result is not None
+        proto, src, dst, info = result
+        assert proto == "UDP"
         assert src == "10.0.0.1:12345"
         assert dst == "8.8.8.8:53"
-        assert info == ""
 
     def test_icmp_echo_request(self):
-        ip = MagicMock(); ip.src = "10.0.0.1"; ip.dst = "10.0.0.2"
-        icmp = MagicMock(); icmp.type = 8
-
-        class FakePkt:
-            def getlayer(self, cls):
-                from scapy.all import IP
-                return ip if cls is IP else icmp
-
-        src, dst, info = _icmp_info(FakePkt())
-        assert src == "10.0.0.1"
-        assert info == "Echo request"
+        raw = _make_ipv4_frame(1, "10.0.0.1", "10.0.0.2", _icmp_payload(8))
+        result = _parse_packet(raw)
+        assert result is not None
+        assert result[0] == "ICMP"
+        assert result[3] == "Echo request"
 
     def test_icmp_echo_reply(self):
-        ip = MagicMock(); ip.src = "10.0.0.2"; ip.dst = "10.0.0.1"
-        icmp = MagicMock(); icmp.type = 0
-
-        class FakePkt:
-            def getlayer(self, cls):
-                from scapy.all import IP
-                return ip if cls is IP else icmp
-
-        _, _, info = _icmp_info(FakePkt())
-        assert info == "Echo reply"
+        raw = _make_ipv4_frame(1, "10.0.0.2", "10.0.0.1", _icmp_payload(0))
+        result = _parse_packet(raw)
+        assert result[3] == "Echo reply"
 
     def test_arp_who_has(self):
-        arp = MagicMock(); arp.op = 1; arp.psrc = "10.0.0.1"; arp.pdst = "10.0.0.254"
-
-        class FakePkt:
-            def getlayer(self, _cls):
-                return arp
-
-        src, dst, info = _arp_info(FakePkt())
-        assert "who has" in info
-        assert "10.0.0.254" in info
+        raw = _arp_frame(1, "10.0.0.1", "10.0.0.254")
+        result = _parse_packet(raw)
+        assert result is not None
+        assert result[0] == "ARP"
+        assert "who has" in result[3]
+        assert "10.0.0.254" in result[3]
 
     def test_arp_is_at(self):
-        arp = MagicMock(); arp.op = 2; arp.psrc = "10.0.0.254"; arp.pdst = "10.0.0.1"
-        arp.hwsrc = "aa:bb:cc:dd:ee:ff"
+        raw = _arp_frame(2, "10.0.0.254", "10.0.0.1", sha="aa:bb:cc:dd:ee:ff")
+        result = _parse_packet(raw)
+        assert "is at" in result[3]
+        assert "aa:bb:cc:dd:ee:ff" in result[3]
 
-        class FakePkt:
-            def getlayer(self, _cls):
-                return arp
+    def test_unknown_protocol_returns_none(self):
+        raw = bytes(60)
+        assert _parse_packet(raw) is None
 
-        _, _, info = _arp_info(FakePkt())
-        assert "is at" in info
-        assert "aa:bb:cc:dd:ee:ff" in info
+    def test_too_short_returns_none(self):
+        assert _parse_packet(b"\x00" * 5) is None
 
 
 class TestTrafficSniffer:
-    def _make_tcp_pkt(self, src="10.0.0.1", sport=54321, dst="10.0.0.2", dport=80, flags=0x02):
-        from scapy.all import IP, TCP, ARP, UDP, ICMP
-        pkt = MagicMock()
-        ip = MagicMock(); ip.src = src; ip.dst = dst
-        tcp = MagicMock(); tcp.sport = sport; tcp.dport = dport; tcp.flags = flags
-
-        def haslayer(cls):
-            return cls in (IP, TCP)
-
-        def getlayer(cls):
-            return ip if cls is IP else tcp
-
-        pkt.haslayer = haslayer
-        pkt.getlayer = getlayer
-        return pkt
-
-    def _make_arp_pkt(self, op=1, psrc="10.0.0.1", pdst="10.0.0.2", hwsrc="aa:bb:cc:dd:ee:ff"):
-        from scapy.all import IP, TCP, ARP, UDP, ICMP
-        pkt = MagicMock()
-        arp = MagicMock(); arp.op = op; arp.psrc = psrc; arp.pdst = pdst; arp.hwsrc = hwsrc
-
-        def haslayer(cls):
-            return cls is ARP
-
-        pkt.haslayer = haslayer
-        pkt.getlayer = lambda _: arp
-        return pkt
-
     def test_handle_tcp_prints_line(self, capsys):
         s = _sniffer()
-        s._handle(self._make_tcp_pkt())
+        raw = _make_ipv4_frame(6, "10.0.0.1", "10.0.0.2", _tcp_payload(54321, 80, 0x02))
+        s._handle(raw)
         out = capsys.readouterr().out
         assert "TCP" in out
         assert "10.0.0.1" in out
 
     def test_handle_arp_prints_line(self, capsys):
         s = _sniffer()
-        s._handle(self._make_arp_pkt())
+        s._handle(_arp_frame(1, "10.0.0.1", "10.0.0.254"))
         out = capsys.readouterr().out
         assert "ARP" in out
 
-    def test_handle_unknown_proto_prints_nothing(self, capsys):
-        from scapy.all import IP, TCP, ARP, UDP, ICMP
-        pkt = MagicMock()
-        pkt.haslayer = lambda cls: False
+    def test_handle_unknown_prints_nothing(self, capsys):
         s = _sniffer()
-        s._handle(pkt)
+        s._handle(bytes(60))
         assert capsys.readouterr().out == ""
 
     def test_bpf_filter_stored(self):
@@ -175,24 +148,12 @@ class TestTrafficSniffer:
         s = TrafficSniffer(verbose=False, bpf_filter=None)
         assert s._filter == ""
 
-    def test_sniff_passes_filter_to_scapy(self):
+    def test_sniff_calls_rust_backend(self):
         s = _sniffer(bpf_filter="udp")
         with patch("sondare.monitors.traffic_sniffer.get_network_interface", return_value="en0"), \
-             patch("sondare.monitors.traffic_sniffer.sniff") as mock_sniff:
+             patch("sondare.monitors.traffic_sniffer._sondare.sniff") as mock_sniff:
             s.sniff()
         mock_sniff.assert_called_once()
-        assert mock_sniff.call_args.kwargs["filter"] == "udp"
-
-    def test_sniff_uses_correct_iface(self):
-        s = _sniffer()
-        with patch("sondare.monitors.traffic_sniffer.get_network_interface", return_value="eth0"), \
-             patch("sondare.monitors.traffic_sniffer.sniff") as mock_sniff:
-            s.sniff()
-        assert mock_sniff.call_args.kwargs["iface"] == "eth0"
-
-    def test_sniff_no_promisc(self):
-        s = _sniffer()
-        with patch("sondare.monitors.traffic_sniffer.get_network_interface", return_value="en0"), \
-             patch("sondare.monitors.traffic_sniffer.sniff") as mock_sniff:
-            s.sniff()
-        assert mock_sniff.call_args.kwargs["promisc"] is False
+        args = mock_sniff.call_args[0]
+        assert args[0] == "en0"
+        assert args[1] == "udp"

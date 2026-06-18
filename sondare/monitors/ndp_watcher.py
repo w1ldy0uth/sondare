@@ -1,14 +1,38 @@
 #!/usr/bin/env python3
 # -*- coding: UTF-8 -*-
 
+import socket
+import struct
 import threading
 from datetime import datetime
-from scapy.all import Ether, IPv6, ICMPv6ND_NA, sniff
-from scapy.packet import Packet
 from sondare import _sondare
 from sondare.utils.network import (
     get_network_interface, get_ipv6_link_local, read_ndp_cache,
 )
+
+_ETH_LEN = 14
+_IPV6_LEN = 40
+_NA_TYPE = 136
+
+
+def _parse_ndp_na(raw: bytes) -> tuple[str, str] | None:
+    """Extracts (ipv6_src, src_mac) from a raw Ethernet+IPv6+ICMPv6 NA frame."""
+    if len(raw) < _ETH_LEN + _IPV6_LEN + 8:
+        return None
+    ethertype = struct.unpack_from("!H", raw, 12)[0]
+    if ethertype != 0x86DD:
+        return None
+    next_hdr = raw[_ETH_LEN + 6]
+    if next_hdr != 58:  # ICMPv6
+        return None
+    icmpv6_offset = _ETH_LEN + _IPV6_LEN
+    icmpv6_type = raw[icmpv6_offset]
+    if icmpv6_type != _NA_TYPE:
+        return None
+    src_ip_bytes = raw[_ETH_LEN + 8 : _ETH_LEN + 24]
+    src_ip = socket.inet_ntop(socket.AF_INET6, src_ip_bytes).lower()
+    src_mac = ":".join(f"{b:02x}" for b in raw[6:12])
+    return src_ip, src_mac
 
 
 class NdpWatcher:
@@ -16,8 +40,8 @@ class NdpWatcher:
     Seeds known IPv6 hosts with an initial multicast echo sweep + NDP cache,
     then passively sniffs ICMPv6 Neighbor Advertisement traffic and prints
     events as they arrive:
-      NEW     — first time this IPv6 address is seen
-      CHANGED — same address, different MAC (potential NDP spoofing)
+      NEW     - first time this IPv6 address is seen
+      CHANGED - same address, different MAC (potential NDP spoofing)
     """
 
     def __init__(self, verbose: bool, timeout: float) -> None:
@@ -49,11 +73,11 @@ class NdpWatcher:
             for ip, mac in sorted(self._hosts.items()):
                 print(f"  {ip.ljust(ip_w)}{mac}")
 
-    def _handle(self, pkt: Packet) -> None:
-        if not (pkt.haslayer(IPv6) and pkt.haslayer(ICMPv6ND_NA) and pkt.haslayer(Ether)):
+    def _handle(self, raw: bytes) -> None:
+        parsed = _parse_ndp_na(raw)
+        if parsed is None:
             return
-        ip  = pkt[IPv6].src.split("%")[0].lower()
-        mac = pkt[Ether].src.lower()
+        ip, mac = parsed
         if not ip or ip == self._own_ip or ip.startswith("ff"):
             return
         ts = datetime.now().strftime("%H:%M:%S")
@@ -69,10 +93,4 @@ class NdpWatcher:
     def watch(self) -> None:
         self._seed()
         print(f"\nWatching for ICMPv6 Neighbor Advertisements on {self._iface} (Ctrl+C to stop) ...\n")
-        sniff(
-            iface=self._iface,
-            filter="icmp6 and ip6[40] == 136",
-            prn=self._handle,
-            store=False,
-            promisc=False,
-        )
+        _sondare.sniff(self._iface, "icmp6 and ip6[40] == 136", self._handle)

@@ -12,3 +12,4 @@ rustls           = { workspace = true }
 x509-parser      = { workspace = true }
 webpki-roots     = { workspace = true }
 socket2          = { workspace = true }
+pcap             = { workspace = true }
