@@ -21,3 +21,7 @@ sondare-engine   = { path = "crates/engine" }
 pnet            = "0.35"
 pnet_datalink   = "0.35"
 pnet_packet     = "0.35"
+rustls          = "0.23"
+x509-parser     = "0.16"
+webpki-roots    = "0.26"
+socket2         = { version = "0.5", features = ["all"] }

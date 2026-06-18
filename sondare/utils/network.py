@@ -34,70 +34,12 @@ _MDNS_SCAN_SERVICES = [
 def browse_mdns(service_types: list[str] | None = None, timeout: float = 5.0) -> list:
     """Returns a list of MdnsRecord for each service advertisement found on the network."""
     from sondare.models import MdnsRecord
+    from sondare import _sondare
     try:
-        import time
-        from zeroconf import Zeroconf, ServiceBrowser
-
-        seen: set[tuple[str, str, str, int]] = set()
-        lock = threading.Lock()
-
-        class _Listener:
-            def add_service(self, zc: Zeroconf, type_: str, name: str) -> None:
-                info = zc.get_service_info(type_, name, timeout=1500)
-                if not info:
-                    return
-                hostname = info.server.rstrip(".") if info.server else name
-                service = type_.removesuffix(".local.").removesuffix(".")
-                port = info.port or 0
-                ips = [
-                    socket.inet_ntoa(a) for a in info.addresses
-                    if len(a) == 4 and not socket.inet_ntoa(a).startswith("127.")
-                ]
-                if not ips and hostname:
-                    try:
-                        _, _, ips = socket.gethostbyname_ex(hostname)
-                        ips = [ip for ip in ips if not ip.startswith("127.")]
-                    except Exception:
-                        pass
-                for ip in ips:
-                    with lock:
-                        seen.add((hostname, ip, service, port))
-            def remove_service(self, *_: object) -> None: pass
-            def update_service(self, *_: object) -> None: pass
-
         types = service_types if service_types is not None else _MDNS_SCAN_SERVICES
-        zc = Zeroconf()
-        listener = _Listener()
-        browsers = [ServiceBrowser(zc, svc, listener) for svc in types]
-
-        # Known-Answer Suppression (RFC 6762 §7.1): devices that recently answered
-        # a multicast query see their own response and skip re-answering the same query.
-        # QU queries (qclass bit 15 set) ask devices to respond *unicast*, so they
-        # never observe each other's answers and suppression does not fire.
-        # Sent at t=0 and t=timeout/2 to catch both fast and slow responders.
-        def _inject_queries() -> None:
-            try:
-                from scapy.all import DNS, DNSQR, Ether, IP, UDP, sendp as scapy_sendp
-                iface = get_network_interface()
-                for svc in types:
-                    scapy_sendp(
-                        Ether(dst="01:00:5e:00:00:fb") /
-                        IP(dst="224.0.0.251") /
-                        UDP(sport=5353, dport=5353) /
-                        DNS(rd=0, qd=DNSQR(qname=svc, qtype="PTR", qclass=0x8001)),
-                        iface=iface,
-                        verbose=False,
-                    )
-            except Exception:
-                pass
-
-        _inject_queries()
-        time.sleep(timeout / 2)
-        _inject_queries()
-        time.sleep(timeout / 2)
-        zc.close()
-
-        return [MdnsRecord(hostname=h, ip=ip, service=s, port=p) for h, ip, s, p in sorted(seen)]
+        timeout_ms = int(timeout * 1000)
+        raw = _sondare.mdns_scan(types, timeout_ms)
+        return [MdnsRecord(hostname=h, ip=ip, service=s, port=p) for h, ip, s, p in raw]
     except Exception:
         return []
 

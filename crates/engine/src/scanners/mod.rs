@@ -1,7 +1,9 @@
 pub mod arp;
 pub mod fingerprint;
 pub mod icmp;
+pub mod mdns;
 pub mod ndp;
 pub mod tcp;
+pub mod tls;
 pub mod trace;
 pub mod udp;

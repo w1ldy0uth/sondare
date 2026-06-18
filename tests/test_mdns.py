@@ -4,6 +4,12 @@ from sondare.services.mdns import Mdns
 from sondare.models import MdnsRecord
 
 
+_RAW_TUPLES = [
+    ("macbook.local", "192.168.1.10", "_airplay._tcp", 7000),
+    ("macbook.local", "192.168.1.10", "_ssh._tcp", 22),
+    ("chromecast.local", "192.168.1.20", "_googlecast._tcp", 8009),
+]
+
 _RECORDS = [
     MdnsRecord(hostname="macbook.local", ip="192.168.1.10", service="_airplay._tcp", port=7000),
     MdnsRecord(hostname="macbook.local", ip="192.168.1.10", service="_ssh._tcp", port=22),
@@ -17,7 +23,7 @@ def test_get_results_before_scan_returns_empty():
 
 
 def test_scan_returns_records():
-    with patch("sondare.services.mdns.browse_mdns", return_value=_RECORDS):
+    with patch("sondare.services.mdns._sondare.mdns_scan", return_value=_RAW_TUPLES):
         scanner = Mdns(verbose=False, timeout=1)
         scanner.scan()
 
@@ -25,7 +31,7 @@ def test_scan_returns_records():
 
 
 def test_scan_empty_network():
-    with patch("sondare.services.mdns.browse_mdns", return_value=[]):
+    with patch("sondare.services.mdns._sondare.mdns_scan", return_value=[]):
         scanner = Mdns(verbose=False, timeout=1)
         scanner.scan()
 

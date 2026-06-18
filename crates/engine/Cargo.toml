@@ -8,3 +8,7 @@ authors.workspace = true
 sondare-codec    = { workspace = true }
 sondare-datalink = { workspace = true }
 pnet_datalink    = { workspace = true }
+rustls           = { workspace = true }
+x509-parser      = { workspace = true }
+webpki-roots     = { workspace = true }
+socket2          = { workspace = true }

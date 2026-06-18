@@ -7,6 +7,8 @@ use sondare_engine::scanners::udp::udp_scan_v4 as _udp_scan_v4;
 use sondare_engine::scanners::fingerprint::fingerprint_v4 as _fingerprint_v4;
 use sondare_engine::scanners::ndp::ndp_sweep as _ndp_sweep;
 use sondare_engine::scanners::trace::traceroute_v4 as _traceroute_v4;
+use sondare_engine::scanners::tls::tls_probe as _tls_probe;
+use sondare_engine::scanners::mdns::mdns_scan as _mdns_scan;
 
 /// Sweep a list of IPv4 targets via ICMP echo.
 ///
@@ -137,6 +139,41 @@ fn traceroute_v4(
         .map_err(|e| PyRuntimeError::new_err(e.to_string()))
 }
 
+/// Probe TLS certificates on the given ports.
+///
+/// Returns a list of dicts with keys: ip, port, cn, issuer, not_before,
+/// not_after, san, expired, self_signed.  Only ports that responded are included.
+#[pyfunction]
+#[pyo3(signature = (ip, ports, timeout_ms=5000))]
+fn tls_probe(
+    ip: &str,
+    ports: Vec<u16>,
+    timeout_ms: u64,
+) -> PyResult<Vec<(String, u16, Option<String>, Option<String>, String, String, Vec<String>, bool, bool)>> {
+    _tls_probe(ip, &ports, timeout_ms)
+        .map(|certs| certs.into_iter().map(|c| (
+            c.ip, c.port, c.cn, c.issuer, c.not_before, c.not_after,
+            c.san, c.expired, c.self_signed,
+        )).collect())
+        .map_err(|e| PyRuntimeError::new_err(e.to_string()))
+}
+
+/// Discover mDNS services on the local network.
+///
+/// Returns a list of (hostname, ip, service, port) tuples.
+#[pyfunction]
+#[pyo3(signature = (service_types, timeout_ms=5000))]
+fn mdns_scan(
+    service_types: Vec<String>,
+    timeout_ms: u64,
+) -> PyResult<Vec<(String, String, String, u16)>> {
+    _mdns_scan(&service_types, timeout_ms)
+        .map(|results| results.into_iter().map(|r| (
+            r.hostname, r.ip, r.service, r.port,
+        )).collect())
+        .map_err(|e| PyRuntimeError::new_err(e.to_string()))
+}
+
 #[pymodule]
 fn _sondare(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(arp_sweep_v4, m)?)?;
@@ -146,5 +183,7 @@ fn _sondare(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(fingerprint_v4, m)?)?;
     m.add_function(wrap_pyfunction!(ndp_sweep, m)?)?;
     m.add_function(wrap_pyfunction!(traceroute_v4, m)?)?;
+    m.add_function(wrap_pyfunction!(tls_probe, m)?)?;
+    m.add_function(wrap_pyfunction!(mdns_scan, m)?)?;
     Ok(())
 }
