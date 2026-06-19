@@ -1,5 +1,5 @@
 use pyo3::prelude::*;
-use pyo3::exceptions::{PyRuntimeError, PyKeyboardInterrupt};
+use pyo3::exceptions::PyRuntimeError;
 use pyo3::types::PyBytes;
 use sondare_engine::scanners::arp::arp_sweep_v4 as _arp_sweep_v4;
 use sondare_engine::scanners::icmp::icmp_sweep_v4 as _icmp_sweep_v4;
